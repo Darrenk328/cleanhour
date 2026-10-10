@@ -98,3 +98,15 @@
   on first load would add ~8 s, so only the Tomorrow bubble types; all bubbles are marked as
   shown in st.session_state and render instantly on every rerun. The headline itself is HTML
   (green time range), so it appears at once and only the sentences after it type.
+- Animated charts: Tomorrow, Check the AI, Where vs when, and Feature importance are ECharts
+  5.5.1 (jsDelivr; cdnjs does not host 5.5.1) in components.html iframes. Each starts when
+  scrolled into view (IntersectionObserver), plays once with cubic-out easing, follows
+  prefers-reduced-motion, and resizes with its frame. The forecast chart stages the line
+  draw (1.2 s), then the 80% range fades in, then the cleanest window appears. It uses a
+  category hour axis because ECharts only stacks the band on category or time axes. If a
+  chart fails to build in Python, the Plotly version is shown; if the CDN is unreachable in
+  the browser, the frame shows a short "could not load" message. "Play the day" stays Plotly.
+- Not verified: how the motion looks on screen. The in-app browser kept the page in a
+  hidden state that pauses animation frames, so the chart sequences, typing, and parallax
+  were confirmed through the DOM and chart state (series loaded, band opacity reached 1,
+  window markArea added, background translateY = 30% of scroll), not by watching them.

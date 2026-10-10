@@ -200,6 +200,17 @@ def ai_bubble(bubble_id: str, text: str, header_html: str = "") -> None:
             st.markdown(text)
 
 
+def echart(build, fallback, source: str) -> None:
+    """Animated ECharts chart in an iframe; falls back to the Plotly figure if building fails."""
+    try:
+        html, height = build()
+    except Exception:
+        plot(fallback())
+        return
+    components.html(html, height=height)
+    st.caption(source)
+
+
 def plot(fig, key: str | None = None):
     if key:  # keyed charts change with user input; animate those updates
         fig.update_layout(transition={"duration": 500, "easing": "cubic-in-out"})
@@ -308,7 +319,9 @@ a {{ color: #1f4d33; }}
 [class*="st-key-bubble"] {{ background: #f3eddf; border-radius: 4px 16px 16px 16px; padding: 0.85rem 1.15rem 0.4rem;
   max-width: 48rem; box-shadow: 0 2px 10px rgba(29, 42, 34, 0.08); gap: 0.25rem; margin: 0.25rem 0 0.75rem; }}
 .ch-ai-label {{ display: flex; align-items: center; gap: 6px; color: #5a7d4f; font-size: 0.78rem;
-  font-weight: 700; letter-spacing: 0.02em; }}
+  font-weight: 700; letter-spacing: 0.02em; line-height: 1.4; margin-bottom: 0.4rem; }}
+[class*="st-key-bubble"] .stMarkdown {{ margin-bottom: 0; }}
+[class*="st-key-bubble"] [data-testid="stMarkdownContainer"] {{ overflow: visible; }}
 .ch-typing {{ display: flex; gap: 5px; padding: 6px 0 4px; }}
 .ch-typing i {{ width: 7px; height: 7px; border-radius: 50%; background: #5a7d4f; opacity: 0.25;
   animation: chDot 400ms ease-out both; }}
@@ -419,7 +432,8 @@ with tab_tomorrow:
             f"daily average ({100 * (avg - best) / avg:.0f}% cleaner). {confidence_line(day, s)}",
             header_html=(f'<div class="ch-answer" role="heading" aria-level="2">Cleanest time to run '
                          f'appliances: <span class="ch-time">{charts.window_label(start_ts.hour)}</span></div>'))
-        plot(charts.forecast_fig(day, start_ts, title, baseline_label=base_label), key="tomorrow_chart")
+        echart(lambda: charts.forecast_echarts(day, start_ts, title, baseline_label=base_label),
+               lambda: charts.forecast_fig(day, start_ts, title, baseline_label=base_label), charts.SRC_MODEL_MD)
 
     st.subheader("Play the day")
     st.markdown("Watch PJM's fuel mix hour by hour: solar rises at midday and gas fills the evening "
@@ -480,7 +494,9 @@ with tab_check:
         if s is not None:
             verdict += f" {confidence_line(cday, s)}"
         ai_bubble("check", verdict)
-        plot(charts.forecast_fig(cday, start_ts, f"Forecast vs actual, {picked:%b %d}, PJM"), key="check_chart")
+        check_title = f"Forecast vs actual, {picked:%b %d}, PJM"
+        echart(lambda: charts.forecast_echarts(cday, start_ts, check_title),
+               lambda: charts.forecast_fig(cday, start_ts, check_title), charts.SRC_MODEL_MD)
 
 # ---------------------------------------------------------------- Scheduler
 with tab_sched:
@@ -548,7 +564,7 @@ with tab_where:
     if stats is None:
         st.warning("The grid comparison data is unavailable. Run `python data.py` to rebuild it.")
     else:
-        plot(charts.spread_fig(stats))
+        echart(lambda: charts.spread_echarts(stats), lambda: charts.spread_fig(stats), charts.SRC_EIA_MD)
         ai_bubble(
             "where",
             f"In PJM, picking the cleanest hour saves about **{timing_gain:.0f} gCO2/kWh**. Switching to "
@@ -592,7 +608,8 @@ with tab_how:
         + ("close to the 80% target." if abs(metrics["band_coverage_pct"] - 80) <= 3 else
            "under the 80% target, so treat the range as somewhat optimistic."
            if metrics["band_coverage_pct"] < 80 else "above the 80% target, so the range is cautious."))
-    plot(charts.importance_fig(importance))
+    echart(lambda: charts.importance_echarts(importance), lambda: charts.importance_fig(importance),
+           charts.SRC_MODEL_MD)
     st.markdown("**Limitations**")
     st.markdown(
         "- Production-based, not consumption-based: imports from neighboring grids are not counted.\n"

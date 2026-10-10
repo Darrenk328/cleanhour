@@ -275,3 +275,213 @@ def spread_fig(stats: pd.DataFrame, focus: str = "PJM"):
     fig.update_yaxes(categoryorder="array", categoryarray=list(d.index[::-1]))
     return _layout(fig, "Where vs when: grid choice outweighs timing", "Carbon intensity (gCO2/kWh)",
                    "", SRC_EIA_MD, height=400)
+
+
+# ================================================================ animated (ECharts)
+# Self-contained HTML pages for st.components.v1.html. Each chart animates in once when it
+# scrolls into view (IntersectionObserver), honours prefers-reduced-motion, and resizes
+# with its frame. The app falls back to the Plotly versions above if building one fails.
+import json
+
+ECHARTS_URL = "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"
+FONTS_URL = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
+             "&family=Nunito+Sans:wght@400;600;700&display=swap")
+
+
+def _hour_labels() -> list[str]:
+    return [hour_label(h) for h in range(24)]
+
+
+def _echarts_page(payload: dict, script: str, height: int, aria: str) -> str:
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="{FONTS_URL}">
+<style>
+html, body {{ margin: 0; background: transparent; font-family: {FONT_BODY}; color: {INK}; }}
+#c {{ width: 100%; height: {height}px; }}
+.err {{ font-size: 14px; color: {INK}; padding: 12px 4px; }}
+</style></head><body>
+<div id="c" role="img" aria-label="{aria}"></div>
+<script src="{ECHARTS_URL}"></script>
+<script>
+(() => {{
+  const el = document.getElementById("c");
+  if (!window.echarts) {{ el.innerHTML = '<p class="err">This chart could not load. Check your connection and reload.</p>'; return; }}
+  const D = {json.dumps(payload)};
+  const C = {{green: "{GREEN}", leaf: "{LEAF}", moss: "{MOSS}", ink: "{INK}", gray: "{GRAY}",
+             grid: "{GRID}", windowFill: "{GREEN_LIGHT}", band: "{BAND}"}};
+  const FONT = "{FONT_BODY}", HEAD = "{FONT_HEAD}";
+  const TOP = el.clientWidth < 560 ? 70 : 44;  // room for a wrapped title on narrow screens
+  const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const chart = echarts.init(el, null, {{renderer: "canvas"}});
+  const base = {{
+    textStyle: {{fontFamily: FONT, color: C.ink}},
+    title: {{text: D.title, left: 0, top: 0, textStyle: {{fontFamily: HEAD, fontSize: 17, fontWeight: 700, color: C.ink,
+             width: el.clientWidth - 8, overflow: "break", lineHeight: 22}}}},
+    legend: {{bottom: 0, left: 0, itemGap: 14, textStyle: {{fontFamily: FONT, fontSize: 12, color: C.ink}}}},
+    animation: !REDUCE, animationEasing: "cubicOut", animationEasingUpdate: "cubicOut",
+  }};
+  const later = (ms, fn) => REDUCE ? fn() : setTimeout(fn, ms);
+  let started = false;
+  const start = () => {{ if (started) return; started = true; {script} }};
+  if ("IntersectionObserver" in window) {{
+    const io = new IntersectionObserver(es => es.forEach(e => {{ if (e.isIntersecting) {{ io.disconnect(); start(); }} }}), {{threshold: 0.2}});
+    io.observe(el);
+  }} else {{ start(); }}
+  window.addEventListener("resize", () => chart.resize());
+}})();
+</script></body></html>"""
+
+
+def forecast_echarts(day: pd.DataFrame, window_start, title: str, window_len: int = 3,
+                     baseline_label: str = "Baseline: same hour yesterday") -> tuple[str, int]:
+    """Forecast line draws itself, then the 80% band fades in, then the cleanest window grows in.
+    day: index = naive local timestamps (one per hour); columns forecast, q10, q90, baseline,
+    optional actual."""
+    hours = [int(t.hour) for t in day.index]
+    col = lambda c: [None if pd.isna(v) else round(float(v), 1) for v in day[c]] if c in day else None
+    payload = {
+        "title": title, "hours": hours, "labels": _hour_labels(),
+        "date": pd.Timestamp(day.index[0]).strftime("%b %d"),
+        "forecast": col("forecast"), "q10": col("q10"), "q90": col("q90"),
+        "baseline": col("baseline"), "actual": col("actual") if "actual" in day and day["actual"].notna().any() else None,
+        "baselineLabel": baseline_label,
+        "window": None if window_start is None else [int(window_start.hour), int(window_start.hour) + window_len],
+        "windowLabel": None if window_start is None else
+            f"Cleanest 3-hour window ({window_label(window_start.hour, window_len)})",
+    }
+    script = """
+  const cats = D.hours.map(h => D.labels[h]);
+  const xy = arr => arr || [];
+  const diff = D.q10 ? D.q10.map((lo, i) => (lo == null || D.q90[i] == null) ? null : +(D.q90[i] - lo).toFixed(1)) : [];
+  const narrow = el.clientWidth < 560;
+  const fmt = v => v == null ? "n/a" : Math.round(v) + " gCO2/kWh";
+  const series = [];
+  if (D.window) series.push({name: D.windowLabel, type: "line", data: [], itemStyle: {color: C.windowFill},
+      lineStyle: {width: 0}, markArea: {silent: true, itemStyle: {color: "rgba(0,0,0,0)"}, data: []}});
+  if (D.q10) {
+    series.push({name: "band-low", type: "line", stack: "band", data: xy(D.q10), symbol: "none",
+                 lineStyle: {width: 0}, silent: true, tooltip: {show: false}});
+    series.push({name: "80% likely range", type: "line", stack: "band", data: diff, symbol: "none",
+                 lineStyle: {width: 0}, itemStyle: {color: C.band}, areaStyle: {color: C.band, opacity: 0}});
+  }
+  if (D.baseline) series.push({name: D.baselineLabel, type: "line", data: xy(D.baseline), symbol: "none",
+      lineStyle: {color: C.gray, width: 2, type: "dashed"}, itemStyle: {color: C.gray},
+      animationDuration: 1200});
+  if (D.actual) {
+    series.push({name: "Actual", type: "line", data: xy(D.actual), symbol: "none",
+                 lineStyle: {color: C.ink, width: 2}, itemStyle: {color: C.ink}, animationDuration: 1200});
+    series.push({name: "Actual", type: "scatter", data: xy(D.actual), symbolSize: 7, itemStyle: {color: C.ink},
+                 animationDuration: 500, animationDelay: i => 1200 + i * 30, tooltip: {show: false}});
+  }
+  series.push({name: "AI forecast", type: "line", data: xy(D.forecast), symbol: "none", z: 5,
+               lineStyle: {color: C.green, width: 3}, itemStyle: {color: C.green}, animationDuration: 1200});
+  const legendData = series.map(s => s.name).filter((n, i, a) => n !== "band-low" && a.indexOf(n) === i);
+  chart.setOption(Object.assign({}, base, {
+    grid: {left: 52, right: 16, top: TOP, bottom: narrow ? 150 : 96},
+    legend: Object.assign({}, base.legend, {data: legendData.map(n => (n === D.windowLabel || n === "80% likely range") ? {name: n, icon: "rect"} : n)}),
+    tooltip: {trigger: "axis", backgroundColor: "#fbf8f1", borderColor: C.grid, textStyle: {fontFamily: FONT, color: C.ink},
+      formatter: ps => {
+        const i = ps[0].dataIndex;
+        const rows = [`<b>${D.date}, ${D.labels[D.hours[i]]}</b>`];
+        rows.push(`AI forecast: ${fmt(D.forecast[i])}`);
+        if (D.q10) rows.push(`80% likely range: ${fmt(D.q10[i])} to ${fmt(D.q90[i])}`);
+        if (D.actual) rows.push(`Actual: ${fmt(D.actual[i])}`);
+        if (D.baseline) rows.push(`${D.baselineLabel}: ${fmt(D.baseline[i])}`);
+        return rows.join("<br>");
+      }},
+    xAxis: {type: "category", data: cats, boundaryGap: false, name: "Hour starting (US Eastern time)",
+            nameLocation: "middle", nameGap: 28, axisLabel: {interval: narrow ? 5 : 2},
+            splitLine: {show: true, interval: 2, lineStyle: {color: C.grid}}},
+    yAxis: {type: "value", scale: true, name: "Carbon intensity (gCO2/kWh)", nameLocation: "middle", nameGap: 40,
+            splitLine: {lineStyle: {color: C.grid}}},
+    series,
+  }));
+  // Stage 2: the likely range fades in once the lines have drawn.
+  later(1250, () => D.q10 && chart.setOption({series: [{name: "80% likely range", areaStyle: {opacity: 1}}]},
+                                             {lazyUpdate: false}));
+  // Stage 3: the cleanest window grows in.
+  later(1800, () => D.window && chart.setOption({series: [{name: D.windowLabel, markArea: {
+      itemStyle: {color: C.windowFill}, animationDuration: 700,
+      data: [[{xAxis: D.labels[D.window[0]]}, {xAxis: cats[Math.min(cats.length - 1, D.hours.indexOf(D.window[0]) + 3)]}]]}}]}));
+"""
+    return _echarts_page(payload, script, 480, title), 490
+
+
+def spread_echarts(stats: pd.DataFrame, focus: str = "PJM") -> tuple[str, int]:
+    """Range bars grow from zero one grid at a time; the daily-average ticks appear last."""
+    d = stats.sort_values("mean")
+    names = list(d.index)
+    is_focus = [n.startswith(focus) for n in names]
+    payload = {
+        "title": "Where vs when: grid choice outweighs timing", "names": names,
+        "min": [round(float(v), 1) for v in d["mean_min"]], "max": [round(float(v), 1) for v in d["mean_max"]],
+        "mean": [round(float(v), 1) for v in d["mean"]], "focus": is_focus,
+        "focusLabel": f"{focus}: avg daily min to max",
+    }
+    script = """
+  const n = D.names.length, delay = i => i * 220;
+  const span = D.names.map((_, i) => +(D.max[i] - D.min[i]).toFixed(1));
+  const pick = want => span.map((v, i) => D.focus[i] === want ? v : "-");
+  const tip = i => `<b>${D.names[i]}</b><br>avg daily min ${Math.round(D.min[i])}, max ${Math.round(D.max[i])} gCO2/kWh`
+                 + `<br>daily swing ${Math.round(D.max[i] - D.min[i])} gCO2/kWh<br>daily average ${Math.round(D.mean[i])} gCO2/kWh`;
+  chart.setOption(Object.assign({}, base, {
+    grid: {left: 8, right: 24, top: TOP, bottom: el.clientWidth < 560 ? 110 : 72, containLabel: true},
+    tooltip: {trigger: "item", backgroundColor: "#fbf8f1", borderColor: C.grid, textStyle: {fontFamily: FONT, color: C.ink},
+              formatter: p => tip(p.dataIndex)},
+    legend: Object.assign({}, base.legend, {data: [{name: D.focusLabel, icon: "rect"},
+            {name: "Other grids: avg daily min to max", icon: "rect"}, "Daily average"]}),
+    xAxis: {type: "value", min: 0, name: "Carbon intensity (gCO2/kWh)", nameLocation: "middle", nameGap: 28,
+            splitLine: {lineStyle: {color: C.grid}}},
+    yAxis: {type: "category", data: D.names, axisTick: {show: false}},
+    series: [
+      {name: "base", type: "bar", stack: "r", data: D.min, itemStyle: {color: "rgba(0,0,0,0)"}, silent: true,
+       tooltip: {show: false}, animationDuration: 1000, animationDelay: delay, barWidth: "45%"},
+      {name: D.focusLabel, type: "bar", stack: "r", data: pick(true), itemStyle: {color: C.green, borderRadius: 4},
+       animationDuration: 1000, animationDelay: delay},
+      {name: "Other grids: avg daily min to max", type: "bar", stack: "r", data: pick(false),
+       itemStyle: {color: C.gray, borderRadius: 4}, animationDuration: 1000, animationDelay: delay},
+      {name: "Daily average", type: "scatter", data: D.mean.map((v, i) => [v, i]), symbol: "rect",
+       symbolSize: [3, 26], itemStyle: {color: C.ink}, z: 5, animationDuration: 400,
+       animationDelay: i => 1000 + n * 220 + i * 80},
+    ],
+  }));
+"""
+    return _echarts_page(payload, script, 380, "Where vs when"), 390
+
+
+def importance_echarts(imp: pd.DataFrame, top: int = 10) -> tuple[str, int]:
+    """Bars grow from zero, staggered top to bottom; error whiskers follow."""
+    d = imp.sort_values("importance").tail(top)
+    payload = {
+        "title": "Feature importance (test set)", "names": list(d["feature"]),
+        "imp": [round(float(v), 3) for v in d["importance"]], "std": [round(float(v), 3) for v in d["std"]],
+    }
+    script = """
+  const n = D.names.length, delay = i => (n - 1 - i) * 90;  // top bar first
+  chart.setOption(Object.assign({}, base, {
+    grid: {left: 8, right: 24, top: TOP, bottom: el.clientWidth < 560 ? 84 : 64, containLabel: true},
+    tooltip: {trigger: "item", backgroundColor: "#fbf8f1", borderColor: C.grid, textStyle: {fontFamily: FONT, color: C.ink},
+              formatter: p => `<b>${D.names[p.dataIndex]}</b><br>+${D.imp[p.dataIndex].toFixed(2)} gCO2/kWh error when shuffled`
+                              + ` (± ${D.std[p.dataIndex].toFixed(2)})`},
+    legend: Object.assign({}, base.legend, {data: [{name: "MAE increase when shuffled", icon: "rect"}]}),
+    xAxis: {type: "value", min: 0, name: "MAE increase when shuffled (gCO2/kWh)", nameLocation: "middle", nameGap: 28,
+            splitLine: {lineStyle: {color: C.grid}}},
+    yAxis: {type: "category", data: D.names, axisTick: {show: false}},
+    series: [
+      {name: "MAE increase when shuffled", type: "bar", data: D.imp, barWidth: "60%",
+       itemStyle: {color: C.green, borderRadius: [0, 4, 4, 0]}, animationDuration: 1000, animationDelay: delay},
+      {name: "spread", type: "custom", silent: true, tooltip: {show: false}, z: 5,
+       data: D.imp.map((v, i) => [i, Math.max(0, v - D.std[i]), v + D.std[i]]),
+       renderItem: (params, api) => {
+         const y = api.coord([0, api.value(0)])[1], a = api.coord([api.value(1), 0])[0], b = api.coord([api.value(2), 0])[0];
+         const s = {stroke: C.gray, lineWidth: 1.2};
+         return {type: "group", children: [
+           {type: "line", shape: {x1: a, y1: y, x2: b, y2: y}, style: s},
+           {type: "line", shape: {x1: a, y1: y - 4, x2: a, y2: y + 4}, style: s},
+           {type: "line", shape: {x1: b, y1: y - 4, x2: b, y2: y + 4}, style: s}]};
+       },
+       animationDuration: 400, animationDelay: 1000 + n * 90},
+    ],
+  }));
+"""
+    return _echarts_page(payload, script, 460, "Feature importance"), 470
