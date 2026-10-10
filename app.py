@@ -165,6 +165,41 @@ if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {{
 </script>"""
 
 
+LEAF_SVG = ('<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="#3f8f5a" '
+            'd="M20 3C10 3 4 8 4 15c0 2 .6 3.7 1.6 5l1.5-1.6C9 14 12.5 11 17 9c-4 3-7 6.5-8.6 10.6'
+            'C9.6 20.5 11 21 13 21c6 0 8-7 7-18z"/></svg>')
+WORD_S, MAX_TYPE_S = 0.025, 1.5
+
+
+def word_stream(text: str):
+    """Yield the message a few words at a time: ~25 ms per word, capped near 1.5 s."""
+    words = text.split(" ")
+    per = max(1, -(-int(len(words) * WORD_S * 1000) // int(MAX_TYPE_S * 1000)))
+    for i in range(0, len(words), per):
+        yield " ".join(words[i:i + per]) + " "
+        time.sleep(WORD_S * per)
+
+
+def ai_bubble(bubble_id: str, text: str, header_html: str = "") -> None:
+    """A CleanHour AI message, written from the model's outputs. Types itself once per
+    session (only the Tomorrow bubble on first load, to keep the page fast); otherwise instant."""
+    typed = st.session_state.setdefault("typed_bubbles", set())
+    animate = bubble_id not in typed and bubble_id in TYPE_ON_FIRST_LOAD and FIRST_LOAD
+    typed.add(bubble_id)
+    with st.container(key=f"bubble_{bubble_id}"):
+        st.markdown(f'<div class="ch-ai-label">{LEAF_SVG}<span>CleanHour AI</span></div>{header_html}',
+                    unsafe_allow_html=True)
+        if animate:
+            dots = st.empty()
+            dots.markdown('<div class="ch-typing" aria-label="typing"><i></i><i></i><i></i></div>',
+                          unsafe_allow_html=True)
+            time.sleep(0.4)
+            dots.empty()
+            st.write_stream(word_stream(text))
+        else:
+            st.markdown(text)
+
+
 def plot(fig, key: str | None = None):
     if key:  # keyed charts change with user input; animate those updates
         fig.update_layout(transition={"duration": 500, "easing": "cubic-in-out"})
@@ -270,6 +305,16 @@ a {{ color: #1f4d33; }}
   color: #1d2a22; animation: chFadeUp 500ms ease-out both; }}
 .ch-answer .ch-time {{ color: #3f8f5a; }}
 [role="tabpanel"] {{ animation: chTabIn 350ms ease-out both; }}
+[class*="st-key-bubble"] {{ background: #f3eddf; border-radius: 4px 16px 16px 16px; padding: 0.85rem 1.15rem 0.4rem;
+  max-width: 48rem; box-shadow: 0 2px 10px rgba(29, 42, 34, 0.08); gap: 0.25rem; margin: 0.25rem 0 0.75rem; }}
+.ch-ai-label {{ display: flex; align-items: center; gap: 6px; color: #5a7d4f; font-size: 0.78rem;
+  font-weight: 700; letter-spacing: 0.02em; }}
+.ch-typing {{ display: flex; gap: 5px; padding: 6px 0 4px; }}
+.ch-typing i {{ width: 7px; height: 7px; border-radius: 50%; background: #5a7d4f; opacity: 0.25;
+  animation: chDot 400ms ease-out both; }}
+.ch-typing i:nth-child(2) {{ animation-delay: 120ms; }}
+.ch-typing i:nth-child(3) {{ animation-delay: 240ms; }}
+@keyframes chDot {{ to {{ opacity: 1; }} }}
 @media (max-width: 700px) {{
   .ch-hero {{ padding: 2rem 0.25rem 1.25rem; }}
   .ch-hero-title {{ font-size: 2.5rem; }}
@@ -298,6 +343,9 @@ except Exception:
     st.stop()
 
 test_days = sorted(preds["date_local"].unique())
+FIRST_LOAD = "typed_bubbles" not in st.session_state
+# Typing all five bubbles would add ~8 s on first load; only the Tomorrow answer types.
+TYPE_ON_FIRST_LOAD = {"tomorrow"}
 
 # ---------------------------------------------------------------- headline metrics
 try:
@@ -365,12 +413,12 @@ with tab_tomorrow:
         st.warning("Not enough hourly data to pick a window for this day.")
     else:
         avg, best = day["forecast"].mean(), window_mean(day["forecast"], s, 3)
-        st.markdown(f'<div class="ch-answer" role="heading" aria-level="2">Cleanest time to run appliances: '
-                    f'<span class="ch-time">{charts.window_label(start_ts.hour)}</span></div>',
-                    unsafe_allow_html=True)
-        st.markdown(f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a "
-                    f"{avg:.0f} gCO2/kWh daily average ({100 * (avg - best) / avg:.0f}% cleaner).")
-        st.markdown(confidence_line(day, s))
+        ai_bubble(
+            "tomorrow",
+            f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a {avg:.0f} gCO2/kWh "
+            f"daily average ({100 * (avg - best) / avg:.0f}% cleaner). {confidence_line(day, s)}",
+            header_html=(f'<div class="ch-answer" role="heading" aria-level="2">Cleanest time to run '
+                         f'appliances: <span class="ch-time">{charts.window_label(start_ts.hour)}</span></div>'))
         plot(charts.forecast_fig(day, start_ts, title, baseline_label=base_label), key="tomorrow_chart")
 
     st.subheader("Play the day")
@@ -422,10 +470,16 @@ with tab_check:
             m3.metric("Cleanest window", hit,
                       help=f"AI picked {charts.window_label(start_ts.hour)}; actual cleanest was "
                            f"{charts.window_label(true_ts.hour)}.")
-        if s is not None:
-            st.markdown(confidence_line(cday, s))
         inside = ((cday["actual"] >= cday["q10"]) & (cday["actual"] <= cday["q90"])).mean()
-        st.caption(f"Actual values fell inside the 80% likely range in {100 * inside:.0f}% of hours that day.")
+        verdict = (f"On {picked:%A, %B %d}, my forecast was off by **{err:.1f} gCO2/kWh** on average, "
+                   f"versus {base_err:.1f} for \"same hour yesterday\". ")
+        if s is not None and t is not None:
+            verdict += (f"I picked **{charts.window_label(start_ts.hour)}**; the actual cleanest window was "
+                        f"{charts.window_label(true_ts.hour)}, so the pick {hit.lower()} it. ")
+        verdict += f"Actual values fell inside my 80% likely range in {100 * inside:.0f}% of hours."
+        if s is not None:
+            verdict += f" {confidence_line(cday, s)}"
+        ai_bubble("check", verdict)
         plot(charts.forecast_fig(cday, start_ts, f"Forecast vs actual, {picked:%b %d}, PJM"), key="check_chart")
 
 # ---------------------------------------------------------------- Scheduler
@@ -477,11 +531,12 @@ with tab_sched:
     if rows:
         out = pd.DataFrame(rows)
         st.dataframe(out, hide_index=True, width="stretch")
-        st.markdown(
-            f"Scheduling saves **{out['Saved vs dirtiest (kg)'].sum():.2f} kg CO2** versus the dirtiest "
-            f"time and **{out['Saved vs typical (kg)'].sum():.2f} kg** versus a typical time "
-            f"(scored on {'actual' if use_actual else 'forecast'} intensity).")
-        st.markdown(f"### If {HOUSEHOLDS:,} Princeton households did this: {yearly_t:,.0f} tonnes CO2/year")
+        ai_bubble(
+            "scheduler",
+            f"Running these in their cleanest windows saves **{out['Saved vs dirtiest (kg)'].sum():.2f} kg CO2** "
+            f"versus the dirtiest time and **{out['Saved vs typical (kg)'].sum():.2f} kg** versus a typical "
+            f"time (scored on {'actual' if use_actual else 'forecast'} intensity). If {HOUSEHOLDS:,} Princeton "
+            f"households did this, that is about **{yearly_t:,.0f} tonnes CO2 a year**.")
         st.caption("Yearly figure: average saving versus a typical time across the 61 test days, using "
                    "the AI's picks scored against actual intensity, times runs per week, 52 weeks, and "
                    f"{HOUSEHOLDS:,} households. Average-intensity accounting; see How the AI works.")
@@ -494,14 +549,16 @@ with tab_where:
         st.warning("The grid comparison data is unavailable. Run `python data.py` to rebuild it.")
     else:
         plot(charts.spread_fig(stats))
-        st.markdown(
-            f"**Takeaway:** In PJM, picking the cleanest hour saves about {timing_gain:.0f} gCO2/kWh. "
-            f"Switching to California's grid would save about {grid_gap:.0f}. "
-            "For New Jersey, a cleaner grid matters more than better timing.")
+        ai_bubble(
+            "where",
+            f"In PJM, picking the cleanest hour saves about **{timing_gain:.0f} gCO2/kWh**. Switching to "
+            f"California's grid would save about **{grid_gap:.0f}**. For New Jersey, a cleaner grid matters "
+            "more than better timing.")
 
 # ---------------------------------------------------------------- How the AI works
 with tab_how:
-    st.markdown(
+    ai_bubble(
+        "how",
         "Each night the model predicts all 24 hours of the next day. It is a gradient-boosted tree "
         "ensemble (scikit-learn HistGradientBoostingRegressor) that learned from about 19 months of "
         "PJM data how the fuel mix responds to the time of day, sunlight, wind, temperature, and "
