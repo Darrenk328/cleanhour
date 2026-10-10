@@ -35,9 +35,71 @@ def show(fig):
     plt.close(fig)
 
 
+# ---------------------------------------------------------------- helpers
+HOUSEHOLDS = 10_000
+DEFAULT_APPLIANCES = pd.DataFrame([
+    {"Appliance": "EV charging", "Include": True, "kWh per run": 7.0, "Hours per run": 3, "Runs per week": 7},
+    {"Appliance": "Clothes dryer", "Include": True, "kWh per run": 3.0, "Hours per run": 1, "Runs per week": 3},
+    {"Appliance": "Dishwasher", "Include": True, "kWh per run": 1.5, "Hours per run": 2, "Runs per week": 5},
+])
+
+
+def window_mean(values, start, length):
+    return float(pd.Series(values).iloc[start:start + length].mean())
+
+
+@st.cache_data
+def test_period_saving(hours: int) -> float:
+    """Average gCO2/kWh saved on test days by running in the model's cleanest `hours`
+    window instead of at a typical (day-average) time, measured on actual intensity."""
+    saved = []
+    for _, d in preds.groupby("date_local"):
+        if len(d) < 23:
+            continue
+        d = d.sort_values("ts_local")
+        s = model.cleanest_window(d["forecast"].to_numpy(), hours)
+        if s is not None:
+            saved.append(d["intensity"].mean() - window_mean(d["intensity"].to_numpy(), s, hours))
+    return float(sum(saved) / len(saved)) if saved else 0.0
+
+
+def yearly_tonnes(kwh: float, hours: int, runs_per_week: float) -> float:
+    """Tonnes CO2/year saved by HOUSEHOLDS homes running this appliance in its cleanest window."""
+    return kwh * test_period_saving(hours) * runs_per_week * 52 * HOUSEHOLDS / 1e6  # g -> tonnes
+
+
 # ---------------------------------------------------------------- header
 st.title("CleanHour")
 st.caption("Forecasting hourly carbon intensity on the PJM grid, the grid that serves Princeton, NJ.")
+
+try:
+    bundle, metrics, importance, preds = artifacts()
+except Exception:
+    st.error("Model files are missing. Run `python data.py` and then `python model.py`, "
+             "then reload this page.")
+    st.stop()
+
+try:
+    stats = data.daily_spread_stats(grid())
+    pjm = stats.loc[data.BA_NAME["PJM"]]
+    ciso = stats.loc[data.BA_NAME["CISO"]]
+    grid_gap, timing_gain = pjm["mean"] - ciso["mean"], pjm["mean_drop"]
+except Exception:
+    stats = None
+default_tonnes = sum(yearly_tonnes(r["kWh per run"], r["Hours per run"], r["Runs per week"])
+                     for _, r in DEFAULT_APPLIANCES.iterrows())
+c1, c2, c3 = st.columns(3)
+pct = metrics["improvement_vs_yesterday_pct"]
+c1.metric("more accurate than yesterday", f"{pct:.0f}%",
+          help=f"{pct:.0f}% lower mean error than \"same hour yesterday\" on the 61-day test set.")
+c2.metric(f"tonnes CO2/yr if {HOUSEHOLDS:,} homes used it", f"{default_tonnes:,.0f}",
+          help=f"{default_tonnes:,.0f} tonnes CO2/yr if {HOUSEHOLDS:,} Princeton homes used it "
+               "with the default appliances below.")
+if stats is not None and timing_gain > 0:
+    ratio = grid_gap / timing_gain
+    c3.metric("grid choice vs timing in NJ", f"{ratio:.0f}x",
+              help=f"Grid choice matters {ratio:.0f}x more than timing in NJ: switching to California's "
+                   f"grid saves about {grid_gap:.0f} gCO2/kWh, the cleanest PJM hour about {timing_gain:.0f}.")
 
 st.subheader("Why it matters")
 st.markdown(
@@ -49,13 +111,6 @@ st.markdown(
     "generation by fuel; IPCC AR5 lifecycle emission factors.</small>",
     unsafe_allow_html=True,
 )
-
-try:
-    bundle, metrics, importance, preds = artifacts()
-except Exception:
-    st.error("Model files are missing. Run `python data.py` and then `python model.py`, "
-             "then reload this page.")
-    st.stop()
 
 
 # ---------------------------------------------------------------- day picker
@@ -116,33 +171,6 @@ if not is_live and "actual" in day:
 
 
 # ---------------------------------------------------------------- scheduler
-HOUSEHOLDS = 10_000
-DEFAULT_APPLIANCES = pd.DataFrame([
-    {"Appliance": "EV charging", "Include": True, "kWh per run": 7.0, "Hours per run": 3, "Runs per week": 7},
-    {"Appliance": "Clothes dryer", "Include": True, "kWh per run": 3.0, "Hours per run": 1, "Runs per week": 3},
-    {"Appliance": "Dishwasher", "Include": True, "kWh per run": 1.5, "Hours per run": 2, "Runs per week": 5},
-])
-
-
-def window_mean(values, start, length):
-    return float(pd.Series(values).iloc[start:start + length].mean())
-
-
-@st.cache_data
-def test_period_saving(hours: int) -> float:
-    """Average gCO2/kWh saved on test days by running in the model's cleanest `hours`
-    window instead of at a typical (day-average) time, measured on actual intensity."""
-    saved = []
-    for _, d in preds.groupby("date_local"):
-        if len(d) < 23:
-            continue
-        d = d.sort_values("ts_local")
-        s = model.cleanest_window(d["forecast"].to_numpy(), hours)
-        if s is not None:
-            saved.append(d["intensity"].mean() - window_mean(d["intensity"].to_numpy(), s, hours))
-    return float(sum(saved) / len(saved)) if saved else 0.0
-
-
 st.divider()
 st.subheader("Appliance scheduler")
 st.markdown("Pick your appliances and edit the numbers. Each one is scheduled into its cleanest "
@@ -183,7 +211,7 @@ try:
             "Saved vs dirtiest time (kg)": round(kwh * (worst - at) / 1000, 2),
             "Saved vs typical time (kg)": round(kwh * (typical - at) / 1000, 2),
         })
-        yearly_t += kwh * test_period_saving(hours) * runs * 52 * HOUSEHOLDS / 1e6  # g -> tonnes
+        yearly_t += yearly_tonnes(kwh, hours, runs)
     if skipped:
         st.warning("Skipped rows with missing or out-of-range numbers: " + ", ".join(skipped)
                    + ". Use kWh above 0 and 1 to 12 hours.")
@@ -209,16 +237,13 @@ except Exception:
 st.divider()
 st.subheader("Where vs when")
 try:
-    stats = data.daily_spread_stats(grid())
-    pjm = stats.loc[data.BA_NAME["PJM"]]
-    ciso = stats.loc[data.BA_NAME["CISO"]]
-    erco = stats.loc[data.BA_NAME["ERCO"]]
+    if stats is None:
+        raise ValueError("no grid stats")
     show(charts.spread_chart(stats))
     st.markdown(
-        f"**Takeaway:** in PJM, picking the cleanest hour beats a typical hour by only "
-        f"{pjm['mean_drop']:.0f} gCO2/kWh on an average day, while California's grid averages "
-        f"{pjm['mean'] - ciso['mean']:.0f} lower and even Texas's averages {pjm['mean'] - erco['mean']:.0f} "
-        "lower. For New Jersey, which grid you are on matters more than when you plug in.")
+        f"**Takeaway:** In PJM, picking the cleanest hour saves about {timing_gain:.0f} gCO2/kWh. "
+        f"Switching to California's grid would save about {grid_gap:.0f}. "
+        "For New Jersey, a cleaner grid matters more than better timing.")
 except Exception:
     st.warning("The grid comparison data is unavailable. Run `python data.py` to rebuild it.")
 
@@ -256,6 +281,8 @@ st.markdown(
     "- Average, not marginal, intensity: the plant that actually responds to your extra load "
     "(usually gas) can be dirtier than the average.\n"
     "- Backtests use actual weather as a stand-in for weather forecasts, so they are somewhat "
-    "optimistic. The live Tomorrow mode uses a real forecast and EIA data that can lag a day.\n"
+    "optimistic.\n"
+    "- Live mode uses EIA data that lags about a day, so tomorrow's forecast is less certain than "
+    "the backtest.\n"
     "- Emission factors are IPCC lifecycle medians; \"other\" and unknown fuels are assumed gas-like."
 )

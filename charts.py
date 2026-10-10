@@ -120,7 +120,8 @@ def spread_chart(stats: pd.DataFrame, focus: str = "PJM"):
     ax.legend(handles=[
         Line2D([], [], color=GREEN, lw=8, label=f"{focus}: avg daily min to max"),
         Line2D([], [], color=GRAY, lw=8, label="Other grids: avg daily min to max"),
-        Line2D([], [], color=GRAY, marker="|", ls="", ms=12, mew=2.5, label="Average (tick)"),
-    ], loc="upper left", fontsize=8.5)
+        Line2D([], [], color=GRAY, marker="|", ls="", ms=12, mew=2.5, label="Daily average"),
+    ], loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=3, fontsize=8.5)
+    fig.set_size_inches(9, 4.2)
     return _finish(fig, ax, "Where vs when: grid choice outweighs timing",
                    "Carbon intensity (gCO2/kWh)", "Grid", SRC_EIA)
