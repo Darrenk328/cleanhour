@@ -263,6 +263,18 @@ def load_weather() -> pd.DataFrame:
     return df
 
 
+def daily_spread_stats(grid: pd.DataFrame) -> pd.DataFrame:
+    """Per grid: average daily min, mean, max intensity (local days with >= 20 hours)."""
+    rows = {}
+    for ba, g in grid.dropna(subset=["intensity"]).groupby("ba"):
+        day = g["ts_utc"].dt.tz_convert(BA_TZ[ba]).dt.date
+        d = g.groupby(day)["intensity"].agg(["min", "mean", "max", "size"])
+        d = d[d["size"] >= 20]
+        rows[BA_NAME[ba]] = {"mean_min": d["min"].mean(), "mean": d["mean"].mean(),
+                             "mean_max": d["max"].mean(), "mean_drop": (d["mean"] - d["min"]).mean()}
+    return pd.DataFrame(rows).T
+
+
 def main() -> None:
     DATA.mkdir(exist_ok=True)
     grid = build_grid()

@@ -67,14 +67,15 @@ def sanity_chart(pjm: pd.DataFrame):
                    "Date (US Eastern)", "Carbon intensity (gCO2/kWh)", SRC_EIA)
 
 
-def forecast_chart(day: pd.DataFrame, window_start: int | None, title: str, window_len: int = 3):
+def forecast_chart(day: pd.DataFrame, window_start: int | None, title: str, window_len: int = 3,
+                   baseline_label: str = "Baseline: same hour yesterday"):
     """day: index = local hour 0..23; columns forecast, optional actual, optional baseline."""
     fig, ax = plt.subplots(figsize=(10, 4.2))
     if window_start is not None:
         ax.axvspan(window_start - 0.5, window_start + window_len - 0.5, color=GREEN_LIGHT, lw=0,
                    label=f"Cleanest 3-hour window ({window_label(window_start, window_len)})")
     if "baseline" in day and day["baseline"].notna().any():
-        ax.plot(day.index, day["baseline"], color=GRAY, lw=1.6, ls="--", label="Baseline: same hour yesterday")
+        ax.plot(day.index, day["baseline"], color=GRAY, lw=1.6, ls="--", label=baseline_label)
     if "actual" in day and day["actual"].notna().any():
         ax.plot(day.index, day["actual"], color=INK, lw=2, marker="o", ms=3.5, label="Actual")
     ax.plot(day.index, day["forecast"], color=GREEN, lw=2.4, label="AI forecast")
@@ -94,7 +95,7 @@ def importance_chart(imp: pd.DataFrame, top: int = 10):
             error_kw={"ecolor": GRAY, "lw": 1}, label="Increase in error when feature is shuffled")
     ax.grid(axis="y", visible=False)
     ax.legend(loc="lower right")
-    return _finish(fig, ax, "What the model relies on (permutation importance, test set)",
+    return _finish(fig, ax, "Feature importance (permutation, test set)",
                    "MAE increase when shuffled (gCO2/kWh)", "Feature", SRC_MODEL)
 
 
