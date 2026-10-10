@@ -145,6 +145,10 @@ def forecast_tomorrow(bundle) -> tuple[pd.DataFrame, dict]:
     weather = data.fetch_weather_forecast(past_days=1, forecast_days=3)
     try:
         demand = data.fetch_live_demand_forecast(days=3)
+        # EIA publishes tomorrow's forecast late in the day; until then reuse the
+        # same-hour forecast from today.
+        demand = demand.reindex(demand.index.union(idx))
+        demand = demand.fillna(demand.shift(24, freq="h").reindex(demand.index))
     except Exception:
         demand = None
     X = make_features(hist, idx, weather, demand, live=True)

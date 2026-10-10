@@ -194,24 +194,19 @@ def _api_key() -> str | None:
     return os.environ.get("EIA_API_KEY") or None
 
 
-def fetch_live_pjm(days: int = 10) -> pd.DataFrame:
-    """Most recent ~`days` days of PJM hourly fuel mix from EIA API v2.
-
-    Paginates 5,000 rows at a time. API `period` is the UTC hour ending; we convert
-    to hour-start UTC to match the bulk CSVs. Raises RuntimeError if no key.
-    """
+def _eia_api_rows(url: str, facets: dict, days: int) -> list[dict]:
+    """Page through EIA API v2 (max 5,000 rows per request) using offset."""
     key = _api_key()
     if not key:
         raise RuntimeError("EIA_API_KEY not set in .env")
     start = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days)).strftime("%Y-%m-%dT%H")
     rows, offset = [], 0
     while True:
-        params = {"api_key": key, "frequency": "hourly", "data[0]": "value",
-                  "facets[respondent][]": "PJM", "start": start,
+        params = {"api_key": key, "frequency": "hourly", "data[0]": "value", "start": start,
                   "sort[0][column]": "period", "sort[0][direction]": "asc",
-                  "offset": offset, "length": 5000}
+                  "offset": offset, "length": 5000, **facets}
         try:
-            r = requests.get(EIA_API_URL, params=params, timeout=60)
+            r = requests.get(url, params=params, timeout=60)
             r.raise_for_status()
         except requests.RequestException as exc:
             # Never leak the key through an exception message that embeds the URL.
@@ -224,11 +219,21 @@ def fetch_live_pjm(days: int = 10) -> pd.DataFrame:
             break
     if not rows:
         raise RuntimeError("EIA API returned no rows")
-    long = pd.DataFrame(rows)
+    return rows
+
+
+def _api_ts(period: pd.Series) -> pd.Series:
+    """API `period` is the UTC hour ending ('2026-10-10T03'); convert to hour-start UTC."""
+    return pd.to_datetime(period, format="%Y-%m-%dT%H", utc=True) - pd.Timedelta(hours=1)
+
+
+def fetch_live_pjm(days: int = 10) -> pd.DataFrame:
+    """Most recent ~`days` days of PJM hourly fuel mix from EIA API v2, with intensity."""
+    long = pd.DataFrame(_eia_api_rows(EIA_API_URL, {"facets[respondent][]": "PJM"}, days))
     long["fuel"] = long["fueltype"].map(_API_FUEL)
     long = long.dropna(subset=["fuel"])
     long["value"] = _num(long["value"])
-    long["ts_utc"] = pd.to_datetime(long["period"], format="%Y-%m-%dT%H", utc=True) - pd.Timedelta(hours=1)
+    long["ts_utc"] = _api_ts(long["period"])
     wide = long.pivot_table(index="ts_utc", columns="fuel", values="value", aggfunc="sum")
     for f in FUELS:
         if f not in wide:
@@ -236,6 +241,13 @@ def fetch_live_pjm(days: int = 10) -> pd.DataFrame:
     wide = wide[FUELS].reset_index()
     wide.insert(0, "ba", "PJM")
     return add_intensity(wide)
+
+
+def fetch_live_demand_forecast(days: int = 3) -> pd.Series:
+    """EIA day-ahead demand forecast (type DF) for PJM, MW, indexed by hour-start UTC."""
+    url = "https://api.eia.gov/v2/electricity/rto/region-data/data/"
+    df = pd.DataFrame(_eia_api_rows(url, {"facets[respondent][]": "PJM", "facets[type][]": "DF"}, days))
+    return pd.Series(_num(df["value"]).to_numpy(), index=_api_ts(df["period"])).sort_index()
 
 
 # ---------------------------------------------------------------- cached loaders

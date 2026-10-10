@@ -34,7 +34,7 @@ FEATURE_LABELS = {
 def _lookup(hist: pd.Series, idx: pd.DatetimeIndex, hours: int, fill_back_days: int = 0) -> np.ndarray:
     """hist value `hours` before each timestamp. If fill_back_days > 0, missing values fall
     back to the same hour on earlier days (used in live mode when EIA data lags)."""
-    vals = hist.reindex(idx - pd.Timedelta(hours=hours)).to_numpy(dtype=float)
+    vals = hist.reindex(idx - pd.Timedelta(hours=hours)).to_numpy(dtype=float, copy=True)
     for k in range(1, fill_back_days + 1):
         miss = np.isnan(vals)
         if not miss.any():

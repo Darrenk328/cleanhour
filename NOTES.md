@@ -21,3 +21,16 @@
   references and other grids, and line style also separates series.
 - No GitHub remote URL was provided (placeholder text only) and `gh` is not logged in,
   so the push step will need the URL.
+- Model features add two day-ahead-safe extras beyond the spec: yesterday's mean intensity
+  and the last observed hour before midnight. "Last observed hour" turned out to be the
+  most important feature in backtests.
+- Honest result: the model cuts MAE by ~39% vs same-hour-yesterday, but its cleanest-window
+  picks are only slightly better than persistence (31% vs 26% exact hits, similar regret).
+  The hour-of-day average baseline overlaps the true window more often (80%) because it
+  always picks the same midday block. PJM's within-day swing is small, which is the
+  "where vs when" story.
+- LIVE mode: EIA API data lags (latest hour is usually last night), so for tomorrow the
+  24h lag falls back to the same hour on the latest available day, and "last observed hour"
+  is staler than in the backtest. EIA's day-ahead demand forecast for tomorrow is usually
+  not published yet; missing hours reuse today's same-hour forecast. Live accuracy is
+  therefore expected to be worse than the backtest MAE.
