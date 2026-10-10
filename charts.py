@@ -109,17 +109,18 @@ def spread_chart(stats: pd.DataFrame, focus: str = "PJM"):
         color = GREEN if name.startswith(focus) else GRAY
         ax.plot([r["mean_min"], r["mean_max"]], [i, i], color=color, lw=10, solid_capstyle="round")
         ax.plot(r["mean"], i, marker="|", color="white", ms=14, mew=2.5)
-        ax.text(r["mean_max"] + 8, i, f"daily swing {r['mean_max'] - r['mean_min']:.0f}", va="center",
+        ax.text(r["mean_max"] + 8, i, f"daily swing {r['mean_max'] - r['mean_min']:.0f} gCO2/kWh", va="center",
                 fontsize=9, color=INK)
     ax.set_yticks(list(y))
     ax.set_yticklabels(d.index)
     ax.grid(axis="y", visible=False)
-    ax.set_xlim(0, d["mean_max"].max() + 120)
+    ax.set_xlim(0, d["mean_max"].max() + 170)
+    ax.set_ylim(-0.6, len(d) - 0.4)
     from matplotlib.lines import Line2D
     ax.legend(handles=[
         Line2D([], [], color=GREEN, lw=8, label=f"{focus}: avg daily min to max"),
         Line2D([], [], color=GRAY, lw=8, label="Other grids: avg daily min to max"),
         Line2D([], [], color=GRAY, marker="|", ls="", ms=12, mew=2.5, label="Average (tick)"),
-    ], loc="lower right", fontsize=8.5)
+    ], loc="upper left", fontsize=8.5)
     return _finish(fig, ax, "Where vs when: grid choice outweighs timing",
                    "Carbon intensity (gCO2/kWh)", "Grid", SRC_EIA)
