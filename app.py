@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 TZ = "America/New_York"
 HOUSEHOLDS = 10_000
 BG_IMAGE = ROOT / "assets" / "nature.jpg"
-BG_CREDIT = ("Waldemar Brandt", "https://unsplash.com/photos/white-wind-turbines-on-green-grass-field-under-blue-and-white-cloudy-sky-during-daytime-8NBACfGMFtw")
+BG_CREDIT = ("Avess Berge", "https://unsplash.com/photos/white-clouds-and-blue-sky-during-daytime-ua2IF9HNaXs")
 HERO_IMAGE = ROOT / "assets" / "princeton.jpg"
 HERO_CREDIT = "Blair Hall, Princeton University"  # source not yet known
 FONTS_CSS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
@@ -315,9 +315,9 @@ html {{ scroll-behavior: smooth; }}
 /* Nature background (fixed, moved at 30% scroll speed by the parallax script). */
 [data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], header {{ background: transparent; }}
 .ch-bg {{ position: fixed; top: 0; left: 0; right: 0; height: 130vh; height: 130lvh; z-index: -1; {bg_css}
-  background-size: cover; background-position: center 40%; filter: saturate(0.95); will-change: transform;
+  background-size: cover; background-position: center top; will-change: transform;
   pointer-events: none; }}
-.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(14, 30, 42, 0.34); }}
+.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(14, 30, 42, 0.22); }}
 [data-testid="stMainBlockContainer"] {{ position: relative; z-index: 1; padding-top: 1.5rem; }}
 /* Cream panels with a soft shadow; the photo shows in the gaps. */
 [class*="st-key-panel"] {{ background: rgba(251, 248, 241, 0.95); border-radius: 4px;

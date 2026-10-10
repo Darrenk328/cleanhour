@@ -9,7 +9,7 @@ than when you plug in.
 
 ## What it does
 
-The Streamlit app opens with a Princeton header photo over a wind-turbine background, with cream content panels. Five tabs sit under a header with three live headline numbers, and short "CleanHour AI" messages explain each result in plain language (written from the model's outputs):
+The Streamlit app opens with a Princeton header photo over a blue-sky background, with cream content panels. Five tabs sit under a header with three live headline numbers, and short "CleanHour AI" messages explain each result in plain language (written from the model's outputs):
 
 - **Tomorrow.** A day-ahead forecast from the latest EIA data (API v2) and the Open-Meteo
   weather forecast, with an "80% likely range" band, the cleanest 3-hour window, and a
@@ -132,7 +132,7 @@ See `NOTES.md` for every judgment call made during the build.
   lifecycle emission factors (gCO2eq/kWh): coal 820, gas 490, oil 720, nuclear 12,
   hydro 24, solar 48, wind 11, geothermal 38.
 - **[PJM Interconnection](https://www.pjm.com/about-pjm/who-we-are):** service territory context.
-- **Background photo:** [Waldemar Brandt](https://unsplash.com/photos/white-wind-turbines-on-green-grass-field-under-blue-and-white-cloudy-sky-during-daytime-8NBACfGMFtw) on Unsplash (Unsplash License).
+- **Background photo:** [Avess Berge](https://unsplash.com/photos/white-clouds-and-blue-sky-during-daytime-ua2IF9HNaXs) on Unsplash (Unsplash License).
 - **Header photo:** Blair Hall, Princeton University (provided by the author; source not yet credited).
 - **Charts:** Apache ECharts 5.5.1 and Plotly; fonts Fraunces and Nunito Sans (Google Fonts).
 

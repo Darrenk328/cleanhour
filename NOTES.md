@@ -154,3 +154,8 @@
   fixed CSS size (130% of the viewport, using lvh so mobile address bars do not resize it)
   and the script only translates it: 30% of scroll speed until it has used its extra 30%
   of height (about one screen of scrolling), then it holds still.
+- Background, round 4 (on request, "a normal sky and clouds"): "White clouds and blue sky
+  during daytime" by Avess Berge on Unsplash (Unsplash License,
+  https://unsplash.com/photos/white-clouds-and-blue-sky-during-daytime-ua2IF9HNaXs), 158 KB.
+  Lighter veil rgba(14,30,42,0.22) so the sky reads as a normal daytime sky; cream text on
+  the stat strip keeps its shadow.
