@@ -44,3 +44,19 @@
 - Hero photo `assets/princeton.jpg` came from the chat upload (800x534). Its source is
   unknown, so the footer credit reads "Princeton University campus" until a real
   source is supplied (`PHOTO_CREDIT` in app.py).
+- Uncertainty band: raw 10%/90% quantile boosting models covered only 52% of test hours
+  (overconfident). Added split-conformal widening (CQR): quantile models refit without the
+  last 30 training days, the miss distance on those days sets a pad (4.8 gCO2/kWh) added to
+  both sides. Test coverage after calibration: 75%, reported as-is in the app. The test
+  set is never used for calibration.
+- Linear regression baseline: median imputation + standardization + OLS on the same
+  features (OLS cannot take NaNs). Its MAE is close to boosting (9.0 vs 8.7) but it picks
+  the cleanest window far less well (15% vs 31% exact hits).
+- Confidence line: "High confidence" when the mean of the 90% upper bound over the chosen
+  window is below the day's median forecast.
+- Animations: CSS keyframes in one injected style block; count-up cards are three small
+  components.html iframes (one per column, so they stack on mobile). Plotly charts get
+  layout.transition (500 ms cubic-in-out) and stable keys. Not confirmed: whether Streamlit
+  updates the chart in place on a date change (needed for the transition to show); in one
+  test the chart element was rebuilt. Plotly's JS transitions are not covered by the CSS
+  prefers-reduced-motion rule; the count-up cards do check it.

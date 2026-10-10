@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 import charts
 import data
@@ -73,8 +74,39 @@ def hero_b64() -> str | None:
         return None
 
 
-def plot(fig):
-    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+def count_up_card(value: int, prefix: str, suffix: str, label: str, note: str, delay_ms: int = 0) -> str:
+    """Self-contained HTML card whose number counts up from 0 once on load (1.2 s)."""
+    return f"""
+<div class="card"><div class="num" data-v="{value}" data-p="{prefix}" data-s="{suffix}">{prefix}{value:,}{suffix}</div>
+<div class="label">{label}</div><div class="note">{note}</div></div>
+<style>
+body {{ margin: 0; font-family: "Source Sans Pro", "Source Sans 3", system-ui, -apple-system, sans-serif; }}
+.card {{ background: #f3f8f5; border-radius: 12px; padding: 14px 18px; height: 152px; box-sizing: border-box; }}
+.num {{ color: #1f7a4d; font-size: 2.3rem; font-weight: 700; line-height: 1.1; }}
+.label {{ color: #1f2933; font-size: 0.95rem; font-weight: 600; margin-top: 4px; }}
+.note {{ color: #5b6570; font-size: 0.8rem; margin-top: 2px; line-height: 1.3; }}
+</style>
+<script>
+const el = document.querySelector(".num"), v = +el.dataset.v, p = el.dataset.p, s = el.dataset.s;
+const fmt = n => p + Math.round(n).toLocaleString("en-US") + s;
+if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {{
+  el.textContent = fmt(0);
+  setTimeout(() => {{
+    const t0 = performance.now();
+    const step = now => {{
+      const k = Math.min(1, (now - t0) / 1200);
+      el.textContent = fmt(v * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(step);
+    }};
+    requestAnimationFrame(step);
+  }}, {delay_ms});
+}}
+</script>"""
+
+
+def plot(fig, key: str | None = None):
+    fig.update_layout(transition={"duration": 500, "easing": "cubic-in-out"})
+    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG, key=key)
     meta = fig.layout.meta
     if isinstance(meta, dict) and meta.get("source"):
         st.caption(meta["source"])
@@ -146,25 +178,45 @@ bg = hero_b64()
 bg_css = f"background-image: url('data:image/jpeg;base64,{bg}');" if bg else ""
 st.markdown(f"""
 <style>
+html {{ scroll-behavior: smooth; }}
 [data-testid="stMainBlockContainer"] {{ padding-top: 2rem; }}
-.ch-hero {{ position: relative; width: 100%; height: 300px; border-radius: 12px; overflow: hidden; margin-bottom: 1rem;
-  background-color: #f3f8f5; {bg_css} background-size: cover; background-position: center 30%; }}
-.ch-hero::before {{ content: ""; position: absolute; inset: 0; background: rgba(255,255,255,0.78); }}
+@keyframes chFadeUp {{ from {{ opacity: 0; transform: translateY(12px); }} to {{ opacity: 1; transform: none; }} }}
+@keyframes chTabIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: none; }} }}
+@keyframes chZoom {{ from {{ transform: scale(1); }} to {{ transform: scale(1.05); }} }}
+.ch-hero {{ position: relative; width: 100%; height: 300px; border-radius: 12px; overflow: hidden;
+  margin-bottom: 1rem; background-color: #f3f8f5; }}
+.ch-hero-photo {{ position: absolute; inset: 0; {bg_css} background-size: cover;
+  background-position: center 30%; animation: chZoom 20s ease-out 1 forwards; }}
+.ch-hero-veil {{ position: absolute; inset: 0; background: rgba(255,255,255,0.78); }}
 .ch-hero-text {{ position: relative; height: 100%; display: flex; flex-direction: column;
   justify-content: center; padding: 0 2.25rem; }}
-.ch-hero-title {{ color: #14301f; font-size: 3.4rem; font-weight: 800; line-height: 1.05; margin: 0; }}
-.ch-hero-sub {{ color: #3a4148; font-size: 1.2rem; margin: 0.6rem 0 0 0; max-width: 40rem; }}
+.ch-hero-title {{ color: #14301f; font-size: 3.4rem; font-weight: 800; line-height: 1.05; margin: 0;
+  animation: chFadeUp 600ms ease-out both; }}
+.ch-hero-sub {{ color: #3a4148; font-size: 1.2rem; margin: 0.6rem 0 0 0; max-width: 40rem;
+  animation: chFadeUp 600ms ease-out 150ms both; }}
+.ch-answer {{ font-size: 2.1rem; font-weight: 700; line-height: 1.2; margin: 0.5rem 0 0.75rem 0;
+  color: #1f2933; animation: chFadeUp 500ms ease-out both; }}
+.ch-answer .ch-time {{ color: #1f7a4d; }}
+[role="tabpanel"] {{ animation: chTabIn 350ms ease-out both; }}
 @media (max-width: 700px) {{
   .ch-hero {{ height: 200px; }}
   .ch-hero-text {{ padding: 0 1.1rem; }}
   .ch-hero-title {{ font-size: 2.3rem; }}
   .ch-hero-sub {{ font-size: 1rem; }}
+  .ch-answer {{ font-size: 1.6rem; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+  html {{ scroll-behavior: auto; }}
+  *, *::before, *::after {{ animation: none !important; transition: none !important; }}
 }}
 </style>
-<div class="ch-hero" role="banner"><div class="ch-hero-text">
-  <div class="ch-hero-title">CleanHour</div>
-  <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
-</div></div>
+<div class="ch-hero" role="banner">
+  <div class="ch-hero-photo"></div><div class="ch-hero-veil"></div>
+  <div class="ch-hero-text">
+    <div class="ch-hero-title">CleanHour</div>
+    <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
+  </div>
+</div>
 """, unsafe_allow_html=True)
 
 try:
@@ -186,19 +238,18 @@ except Exception:
 default_tonnes = sum(yearly_tonnes(r["kWh per run"], r["Hours per run"], r["Runs per week"])
                      for _, r in DEFAULT_APPLIANCES.iterrows())
 pct = metrics["improvement_vs_yesterday_pct"]
-c1, c2, c3 = st.columns(3)
-c1.metric("more accurate than yesterday", f"{pct:.0f}%",
-          help=f"{pct:.0f}% lower mean error than yesterday's pattern (same hour yesterday) "
-               "on the 61-day test set.")
-c2.metric(f"t CO2/yr for {HOUSEHOLDS:,} homes", f"{default_tonnes:,.0f}",
-          help=f"{default_tonnes:,.0f} tonnes CO2 per year if {HOUSEHOLDS:,} Princeton homes "
-               "scheduled the default appliances in the Scheduler tab.")
+cards = [
+    (round(pct), "", "%", "More Accurate Than Yesterday's Pattern",
+     "Lower error than \"same hour yesterday\", 61-day test"),
+    (round(default_tonnes), "", "", f"Tonnes CO2/yr for {HOUSEHOLDS:,} Princeton Homes",
+     "Scheduling the default appliances"),
+]
 if stats is not None and timing_gain > 0:
-    ratio = grid_gap / timing_gain
-    c3.metric("grid choice vs timing in NJ", f"~{ratio:.0f}x",
-              help=f"Grid choice matters about {ratio:.0f}x more than timing: California's grid averages "
-                   f"{grid_gap:.0f} gCO2/kWh below PJM, the cleanest PJM hour about {timing_gain:.0f} below "
-                   "a typical one.")
+    cards.append((round(grid_gap / timing_gain), "~", "x", "Grid Choice vs Timing in NJ",
+                  f"California: {grid_gap:.0f} g/kWh lower; best PJM hour: {timing_gain:.0f}"))
+for col, (i, card) in zip(st.columns(len(cards)), enumerate(cards)):
+    with col:
+        components.html(count_up_card(*card, delay_ms=150 * i), height=154)
 
 st.markdown(
     "**Why it matters.** PJM, the largest US grid, serves about 65 million people; in 2025-2026 its "
@@ -240,11 +291,13 @@ with tab_tomorrow:
         st.warning("Not enough hourly data to pick a window for this day.")
     else:
         avg, best = day["forecast"].mean(), window_mean(day["forecast"], s, 3)
-        st.markdown(f"## Cleanest time to run appliances: {charts.window_label(start_ts.hour)}")
+        st.markdown(f'<div class="ch-answer" role="heading" aria-level="2">Cleanest time to run appliances: '
+                    f'<span class="ch-time">{charts.window_label(start_ts.hour)}</span></div>',
+                    unsafe_allow_html=True)
         st.markdown(f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a "
                     f"{avg:.0f} gCO2/kWh daily average ({100 * (avg - best) / avg:.0f}% cleaner).")
         st.markdown(confidence_line(day, s))
-        plot(charts.forecast_fig(day, start_ts, title, baseline_label=base_label))
+        plot(charts.forecast_fig(day, start_ts, title, baseline_label=base_label), key="tomorrow_chart")
 
     st.subheader("Play the day")
     st.markdown("Watch PJM's fuel mix hour by hour: solar rises at midday and gas fills the evening "
@@ -267,7 +320,7 @@ with tab_tomorrow:
         full = sorted([d for d, n in counts.items() if n >= 23], reverse=True)[:14]
         pick = st.selectbox("Day to play", full, format_func=lambda d: f"{d:%a %b %d, %Y}")
         one = gw[gw.index.date == pick]
-        plot(charts.mix_animation_fig(one, f"PJM fuel mix, {pick:%b %d}"))
+        plot(charts.mix_animation_fig(one, f"PJM fuel mix, {pick:%b %d}"), key="mix_chart")
     except Exception:
         st.warning("The fuel-mix animation is unavailable. Run `python data.py` to rebuild the data.")
 
@@ -299,7 +352,7 @@ with tab_check:
             st.markdown(confidence_line(cday, s))
         inside = ((cday["actual"] >= cday["q10"]) & (cday["actual"] <= cday["q90"])).mean()
         st.caption(f"Actual values fell inside the 80% likely range in {100 * inside:.0f}% of hours that day.")
-        plot(charts.forecast_fig(cday, start_ts, f"Forecast vs actual, {picked:%b %d}, PJM"))
+        plot(charts.forecast_fig(cday, start_ts, f"Forecast vs actual, {picked:%b %d}, PJM"), key="check_chart")
 
 # ---------------------------------------------------------------- Scheduler
 with tab_sched:
