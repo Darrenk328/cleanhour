@@ -1,7 +1,11 @@
 [theme]
 base = "light"
-primaryColor = "#1f7a4d"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f3f8f5"
-textColor = "#1f2933"
-font = "sans serif"
+primaryColor = "#3f8f5a"
+backgroundColor = "#fbf8f1"
+secondaryBackgroundColor = "#f1ece0"
+textColor = "#1d2a22"
+linkColor = "#1f4d33"
+font = "'Nunito Sans', 'Segoe UI', system-ui, sans-serif"
+headingFont = "Fraunces, Georgia, serif"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+baseRadius = "12px"

@@ -11,10 +11,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-GREEN = "#1f7a4d"
-GREEN_LIGHT = "#d6eadf"
-BAND = "rgba(31, 122, 77, 0.18)"  # forecast uncertainty ribbon
-INK = "#1f2933"
+GREEN = "#1f4d33"  # forest
+GREEN_LIGHT = "#dfe9d6"  # pale moss (cleanest-window shading)
+LEAF = "#3f8f5a"
+MOSS = "#5a7d4f"
+FONT_BODY = "Nunito Sans, Segoe UI, system-ui, sans-serif"
+FONT_HEAD = "Fraunces, Georgia, serif"
+BAND = "rgba(63, 143, 90, 0.22)"  # forecast uncertainty ribbon
+INK = "#1d2a22"
 GRAY = "#8a939b"
 GRID = "#e6e9ec"
 
@@ -149,9 +153,10 @@ FUEL_COLORS = {"Nuclear": "#8b6bc4", "Coal": "#4b4b4b", "Gas": "#c07a2c",
 
 def _layout(fig, title: str, xlabel: str, ylabel: str, source: str, height: int = 420):
     fig.update_layout(
-        title={"text": title, "x": 0, "xanchor": "left", "font": {"size": 16, "color": INK}},
+        title={"text": title, "x": 0, "xanchor": "left", "font": {"size": 18, "color": INK, "family": FONT_HEAD}},
         xaxis_title=xlabel, yaxis_title=ylabel, height=height,
-        template="plotly_white", font={"color": INK, "size": 12},
+        template="plotly_white", font={"color": INK, "size": 12, "family": FONT_BODY},
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         margin={"l": 10, "r": 10, "t": 50, "b": 10},
         legend={"orientation": "h", "yanchor": "top", "y": -0.25, "x": 0, "xanchor": "left"},
         hoverlabel={"bgcolor": "white"},

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import base64
-import io
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from pathlib import Path
 
 import pandas as pd
@@ -16,8 +18,10 @@ import model
 ROOT = Path(__file__).resolve().parent
 TZ = "America/New_York"
 HOUSEHOLDS = 10_000
-HERO_IMAGE = ROOT / "assets" / "princeton.jpg"
-PHOTO_CREDIT = "Princeton University campus"  # replace with the photo's source
+BG_IMAGE = ROOT / "assets" / "nature.jpg"
+BG_CREDIT = ("Sebastian Unrau", "https://unsplash.com/photos/trees-on-forest-with-sun-rays-sp-p7uuT0tw")
+FONTS_CSS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
+             "&family=Nunito+Sans:wght@400;600;700&display=swap")
 
 LINKS = {
     "EIA Form 930": "https://www.eia.gov/electricity/gridmonitor/",
@@ -48,30 +52,85 @@ def grid():
     return data.load_grid()
 
 
-@st.cache_data(ttl=1800, show_spinner="Fetching live EIA and weather data...")
+LIVE_TTL_S, LIVE_WAIT_S = 1800, 6
+
+
+@st.cache_resource
+def _live_jobs() -> dict:
+    """Shared state for background live fetches: name -> {t, result, future}."""
+    return {"pool": ThreadPoolExecutor(max_workers=2)}
+
+
+def _live(name: str, fn):
+    """Run a slow network call in a background thread so the page never blocks on it.
+    Waits up to LIVE_WAIT_S; if it is still running, raises and the caller falls back,
+    and a later rerun picks up the finished result. Results are reused for LIVE_TTL_S."""
+    jobs = _live_jobs()
+    job = jobs.setdefault(name, {"t": 0.0, "result": None, "future": None})
+    if job["result"] is not None and time.time() - job["t"] < LIVE_TTL_S:
+        return job["result"]
+    if job["future"] is None:
+        job["future"] = jobs["pool"].submit(fn)
+    try:
+        result = job["future"].result(timeout=LIVE_WAIT_S)
+    except FutureTimeout:
+        raise RuntimeError("live data is still loading") from None
+    except Exception:
+        job["future"] = None
+        raise
+    job.update(t=time.time(), result=result, future=None)
+    return result
+
+
 def live_forecast():
-    return model.forecast_tomorrow(artifacts()[0])
+    bundle = artifacts()[0]
+    return _live("forecast", lambda: model.forecast_tomorrow(bundle))
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
 def live_mix():
-    return data.fetch_live_pjm(days=10)
+    return _live("mix", lambda: data.fetch_live_pjm(days=10))
 
 
 @st.cache_data
-def hero_b64() -> str | None:
-    """Downscaled JPEG as base64 so the page stays light; None if the photo is missing."""
-    if not HERO_IMAGE.exists():
-        return None
+def bg_b64() -> str | None:
+    """Background photo as base64 (embedded so no static file server is needed)."""
     try:
-        from PIL import Image
-        im = Image.open(HERO_IMAGE).convert("RGB")
-        im.thumbnail((1600, 1600))
-        buf = io.BytesIO()
-        im.save(buf, format="JPEG", quality=80)
-        return base64.b64encode(buf.getvalue()).decode()
-    except Exception:
+        return base64.b64encode(BG_IMAGE.read_bytes()).decode()
+    except OSError:
         return None
+
+
+PARALLAX_JS = """
+<script>
+// Parallax: the page content scrolls normally; the background moves at 30% speed.
+(() => {
+  const P = window.parent, doc = P.document;
+  if (P.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const bg = doc.querySelector(".ch-bg"), sc = doc.querySelector('[data-testid="stMain"]');
+  if (!bg || !sc) return;  // CSS fallback: background stays fixed while content scrolls
+  if (P.__chParallaxOff) P.__chParallaxOff();
+  const size = () => {
+    const extra = Math.max(0, sc.scrollHeight - sc.clientHeight) * 0.3;
+    bg.style.height = (P.innerHeight + extra) + "px";
+  };
+  let queued = false;
+  const onScroll = () => {
+    if (queued) return;
+    queued = true;
+    P.requestAnimationFrame(() => {
+      bg.style.transform = "translate3d(0," + (-sc.scrollTop * 0.3) + "px,0)";
+      queued = false;
+    });
+  };
+  const ro = new P.ResizeObserver(size);
+  ro.observe(sc.firstElementChild || sc);
+  sc.addEventListener("scroll", onScroll, {passive: true});
+  P.addEventListener("resize", size);
+  P.__chParallaxOff = () => { ro.disconnect(); sc.removeEventListener("scroll", onScroll); P.removeEventListener("resize", size); };
+  size(); onScroll();
+})();
+</script>
+"""
 
 
 def count_up_card(value: int, prefix: str, suffix: str, label: str, note: str, delay_ms: int = 0) -> str:
@@ -80,11 +139,13 @@ def count_up_card(value: int, prefix: str, suffix: str, label: str, note: str, d
 <div class="card"><div class="num" data-v="{value}" data-p="{prefix}" data-s="{suffix}">{prefix}{value:,}{suffix}</div>
 <div class="label">{label}</div><div class="note">{note}</div></div>
 <style>
-body {{ margin: 0; font-family: "Source Sans Pro", "Source Sans 3", system-ui, -apple-system, sans-serif; }}
-.card {{ background: #f3f8f5; border-radius: 12px; padding: 14px 18px; height: 152px; box-sizing: border-box; }}
-.num {{ color: #1f7a4d; font-size: 2.3rem; font-weight: 700; line-height: 1.1; }}
-.label {{ color: #1f2933; font-size: 0.95rem; font-weight: 600; margin-top: 4px; }}
-.note {{ color: #5b6570; font-size: 0.8rem; margin-top: 2px; line-height: 1.3; }}
+@import url("{FONTS_CSS}");
+body {{ margin: 0; padding: 2px 6px 18px; font-family: "Nunito Sans", "Segoe UI", system-ui, sans-serif; }}
+.card {{ background: rgba(251, 248, 241, 0.95); border-radius: 16px; padding: 16px 20px; height: 150px;
+  box-sizing: border-box; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14); }}
+.num {{ color: #1f4d33; font-family: Fraunces, Georgia, serif; font-size: 2.3rem; font-weight: 700; line-height: 1.1; }}
+.label {{ color: #1d2a22; font-size: 0.95rem; font-weight: 700; margin-top: 4px; }}
+.note {{ color: #5a7d4f; font-size: 0.8rem; margin-top: 2px; line-height: 1.3; }}
 </style>
 <script>
 const el = document.querySelector(".num"), v = +el.dataset.v, p = el.dataset.p, s = el.dataset.s;
@@ -174,52 +235,60 @@ DEFAULT_APPLIANCES = pd.DataFrame([
 ])
 
 
-# ---------------------------------------------------------------- hero
-bg = hero_b64()
-bg_css = f"background-image: url('data:image/jpeg;base64,{bg}');" if bg else ""
+# ---------------------------------------------------------------- page style + hero
+bg = bg_b64()
+bg_css = f"background-image: url('data:image/jpeg;base64,{bg}');" if bg else "background: #1f4d33;"
 st.markdown(f"""
 <style>
+@import url("{FONTS_CSS}");
 html {{ scroll-behavior: smooth; }}
 #MainMenu, [data-testid="stToolbar"], header {{ visibility: hidden; }}
-[data-testid="stMainBlockContainer"] {{ padding-top: 2rem; }}
+/* Nature background (fixed, moved at 30% scroll speed by the parallax script). */
+[data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], header {{ background: transparent; }}
+.ch-bg {{ position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: -1; {bg_css}
+  background-size: cover; background-position: center top; filter: saturate(0.85); will-change: transform;
+  pointer-events: none; }}
+.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(20, 40, 25, 0.25); }}
+[data-testid="stMainBlockContainer"] {{ position: relative; z-index: 1; padding-top: 1.5rem; }}
+/* Cream panels with a soft shadow; the photo shows in the gaps. */
+[class*="st-key-panel"] {{ background: rgba(251, 248, 241, 0.95); border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12); padding: 1.5rem 1.75rem; }}
+/* Fonts. */
+html, body, [data-testid="stApp"], .stMarkdown, p, li, label, input, textarea, button,
+[data-baseweb="tab"], [data-testid="stCaptionContainer"] {{ font-family: "Nunito Sans", "Segoe UI", system-ui, sans-serif; }}
+h1, h2, h3, h4, .ch-hero-title, .ch-answer {{ font-family: Fraunces, Georgia, serif !important; font-style: normal; }}
+a {{ color: #1f4d33; }}
 @keyframes chFadeUp {{ from {{ opacity: 0; transform: translateY(12px); }} to {{ opacity: 1; transform: none; }} }}
 @keyframes chTabIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: none; }} }}
-@keyframes chZoom {{ from {{ transform: scale(1); }} to {{ transform: scale(1.05); }} }}
-.ch-hero {{ position: relative; width: 100%; height: 300px; border-radius: 12px; overflow: hidden;
-  margin-bottom: 1rem; background-color: #f3f8f5; }}
-.ch-hero-photo {{ position: absolute; inset: 0; {bg_css} background-size: cover;
-  background-position: center 30%; animation: chZoom 20s ease-out 1 forwards; }}
-.ch-hero-veil {{ position: absolute; inset: 0; background: rgba(255,255,255,0.78); }}
-.ch-hero-text {{ position: relative; height: 100%; display: flex; flex-direction: column;
-  justify-content: center; padding: 0 2.25rem; }}
-.ch-hero-title {{ color: #14301f; font-size: 3.4rem; font-weight: 800; line-height: 1.05; margin: 0;
-  animation: chFadeUp 600ms ease-out both; }}
-.ch-hero-sub {{ color: #3a4148; font-size: 1.2rem; margin: 0.6rem 0 0 0; max-width: 40rem;
-  animation: chFadeUp 600ms ease-out 150ms both; }}
+/* Hero text sits directly on the photo. */
+.ch-hero {{ padding: 3.5rem 0.5rem 2.25rem; }}
+.ch-hero-title {{ color: #fbf8f1; font-size: 3.6rem; font-weight: 700; line-height: 1.05; margin: 0;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45); animation: chFadeUp 600ms ease-out both; }}
+.ch-hero-sub {{ color: #fbf8f1; font-size: 1.25rem; margin: 0.6rem 0 0 0; max-width: 40rem;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5); animation: chFadeUp 600ms ease-out 150ms both; }}
 .ch-answer {{ font-size: 2.1rem; font-weight: 700; line-height: 1.2; margin: 0.5rem 0 0.75rem 0;
-  color: #1f2933; animation: chFadeUp 500ms ease-out both; }}
-.ch-answer .ch-time {{ color: #1f7a4d; }}
+  color: #1d2a22; animation: chFadeUp 500ms ease-out both; }}
+.ch-answer .ch-time {{ color: #3f8f5a; }}
 [role="tabpanel"] {{ animation: chTabIn 350ms ease-out both; }}
 @media (max-width: 700px) {{
-  .ch-hero {{ height: 200px; }}
-  .ch-hero-text {{ padding: 0 1.1rem; }}
-  .ch-hero-title {{ font-size: 2.3rem; }}
-  .ch-hero-sub {{ font-size: 1rem; }}
+  .ch-hero {{ padding: 2rem 0.25rem 1.25rem; }}
+  .ch-hero-title {{ font-size: 2.5rem; }}
+  .ch-hero-sub {{ font-size: 1.05rem; }}
   .ch-answer {{ font-size: 1.6rem; }}
+  [class*="st-key-panel"] {{ padding: 1.1rem 1rem; }}
 }}
 @media (prefers-reduced-motion: reduce) {{
   html {{ scroll-behavior: auto; }}
   *, *::before, *::after {{ animation: none !important; transition: none !important; }}
 }}
 </style>
+<div class="ch-bg" aria-hidden="true"></div>
 <div class="ch-hero" role="banner">
-  <div class="ch-hero-photo"></div><div class="ch-hero-veil"></div>
-  <div class="ch-hero-text">
-    <div class="ch-hero-title">CleanHour</div>
-    <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
-  </div>
+  <div class="ch-hero-title">CleanHour</div>
+  <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
 </div>
 """, unsafe_allow_html=True)
+components.html(PARALLAX_JS, height=0)
 
 try:
     bundle, metrics, importance, preds = artifacts()
@@ -251,16 +320,18 @@ if stats is not None and timing_gain > 0:
                   f"California: {grid_gap:.0f} g/kWh lower; best PJM hour: {timing_gain:.0f}"))
 for col, (i, card) in zip(st.columns(len(cards)), enumerate(cards)):
     with col:
-        components.html(count_up_card(*card, delay_ms=150 * i), height=154)
+        components.html(count_up_card(*card, delay_ms=150 * i), height=172)
 
-st.markdown(
-    "**Why it matters.** PJM, the largest US grid, serves about 65 million people; in 2025-2026 its "
-    "power was mostly gas, nuclear, and coal, averaging about 356 gCO2/kWh. Knowing the cleanest "
-    f"hours a day ahead lets flexible loads avoid the dirtiest ones. Sources: {link('PJM')}, "
-    f"{link('EIA Form 930')}, {link('IPCC AR5 Annex III', 'IPCC AR5')}.")
+with st.container(key="panel_why"):
+    st.markdown(
+        "**Why it matters.** PJM, the largest US grid, serves about 65 million people; in 2025-2026 its "
+        "power was mostly gas, nuclear, and coal, averaging about 356 gCO2/kWh. Knowing the cleanest "
+        f"hours a day ahead lets flexible loads avoid the dirtiest ones. Sources: {link('PJM')}, "
+        f"{link('EIA Form 930')}, {link('IPCC AR5 Annex III', 'IPCC AR5')}.")
 
-tab_tomorrow, tab_check, tab_sched, tab_where, tab_how = st.tabs(
-    ["Tomorrow", "Check the AI (past days)", "Scheduler", "Where vs when", "How the AI works"])
+with st.container(key="panel_tabs"):
+    tab_tomorrow, tab_check, tab_sched, tab_where, tab_how = st.tabs(
+        ["Tomorrow", "Check the AI (past days)", "Scheduler", "Where vs when", "How the AI works"])
 
 # ---------------------------------------------------------------- Tomorrow
 live_ok, live_day, live_info = False, None, {}
@@ -284,8 +355,9 @@ with tab_tomorrow:
         base_label = ("Baseline: same hour, latest day" if live_info.get("lag_filled")
                       else "Baseline: same hour yesterday")
     else:
-        st.warning("Live data is unavailable right now (no EIA_API_KEY in .env, or the EIA or weather "
-                   "service did not respond). Showing the most recent test day's forecast instead.")
+        st.warning("Live data is still loading or unavailable (slow EIA or weather service, or no "
+                   "EIA_API_KEY in .env). Showing the most recent test day's forecast for now; reload "
+                   "in a minute for tomorrow's.")
         day, base_label = test_day_frame(test_days[-1]).drop(columns="actual"), "Baseline: same hour yesterday"
         title = f"Forecast for {test_days[-1]:%b %d}, PJM"
     s, start_ts = cleanest(day)
@@ -476,11 +548,11 @@ with tab_how:
         "- Emission factors are IPCC lifecycle medians; \"other\" and unknown fuels are assumed gas-like.")
 
 # ---------------------------------------------------------------- footer
-st.divider()
-st.caption(
-    f"Data: {link('EIA Form 930')} hourly generation and demand forecasts; weather from "
-    f"{link('Open-Meteo')} ({link('ERA5')} reanalysis); emission factors from "
-    f"{link('IPCC AR5 Annex III')}; grid context from {link('PJM')}.  \n"
-    + (f"Photo: {PHOTO_CREDIT}. " if bg else "")
-    + f"Code: {link('GitHub', 'github.com/Darrenk328/cleanhour')}.  \n"
-    + "© 2026 CleanHour, hackPHS")
+with st.container(key="panel_footer"):
+    st.caption(
+        f"Data: {link('EIA Form 930')} hourly generation and demand forecasts; weather from "
+        f"{link('Open-Meteo')} ({link('ERA5')} reanalysis); emission factors from "
+        f"{link('IPCC AR5 Annex III')}; grid context from {link('PJM')}.  \n"
+        f"Background photo: [{BG_CREDIT[0]}]({BG_CREDIT[1]}) on [Unsplash](https://unsplash.com/license). "
+        f"Code: {link('GitHub', 'github.com/Darrenk328/cleanhour')}.  \n"
+        "© 2026 CleanHour, hackPHS")

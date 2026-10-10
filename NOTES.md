@@ -73,3 +73,21 @@
   animation frames, so some screenshots showed stale or mid-animation frames. Final states
   were confirmed through the DOM (animations finished, chart data correct, no exceptions,
   no horizontal scroll at 400 px).
+- Redesign (tag pre-nature marks the version before): background photo "Trees on forest
+  with sun rays" by Sebastian Unrau on Unsplash (Unsplash License; page
+  https://unsplash.com/photos/trees-on-forest-with-sun-rays-sp-p7uuT0tw), downloaded at
+  1920 px and re-encoded to 317 KB. The Princeton photo (unknown license) was removed from
+  the repo.
+- Parallax: Streamlit scrolls `section[data-testid="stMain"]`, not the window. A
+  zero-height components.html script moves a fixed background layer at 30% of the scroll
+  and sizes it to viewport + 30% of the scroll range. Without the script (or with reduced
+  motion) the background simply stays fixed while content scrolls.
+- Panels use `st.container(key="panel_*")`, which Streamlit exposes as a `st-key-panel_*`
+  class for styling. The fixed background sits at z-index -1 inside the content's stacking
+  context so panel backgrounds paint above it.
+- Fonts: Google Fonts Fraunces (600/700) and Nunito Sans (400/600/700) via @import, also set
+  as theme font/headingFont so tables and widgets use them; Plotly layout fonts match.
+- Live data is fetched in a background thread with a 6 s wait. If EIA or Open-Meteo is
+  slow, the page shows the fallback day instead of blocking, and the next rerun picks up
+  the finished result (cached 30 min). Added after the EIA API stalled page load during
+  testing.
