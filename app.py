@@ -133,24 +133,40 @@ PARALLAX_JS = """
 """
 
 
-def count_up_card(value: int, prefix: str, suffix: str, label: str, note: str, delay_ms: int = 0) -> str:
-    """Self-contained HTML card whose number counts up from 0 once on load (1.2 s)."""
+def stat_strip(stats: list[tuple]) -> str:
+    """Three figures in a row on the hero photo, separated by thin rules. Each counts up from 0
+    once on load (1.2 s, staggered 150 ms). stats: (value, prefix, suffix, label, note)."""
+    cells = "".join(
+        f'<div class="cell{" lead" if i == 0 else ""}"><div class="num" data-v="{v}" data-p="{p}" data-s="{x}">'
+        f'{p}{v:,}{x}</div><div class="label">{label}</div><div class="note">{note}</div></div>'
+        for i, (v, p, x, label, note) in enumerate(stats))
     return f"""
-<div class="card"><div class="num" data-v="{value}" data-p="{prefix}" data-s="{suffix}">{prefix}{value:,}{suffix}</div>
-<div class="label">{label}</div><div class="note">{note}</div></div>
+<div class="strip">{cells}</div>
 <style>
 @import url("{FONTS_CSS}");
-body {{ margin: 0; padding: 2px 6px 18px; font-family: "Nunito Sans", "Segoe UI", system-ui, sans-serif; }}
-.card {{ background: rgba(251, 248, 241, 0.95); border-radius: 16px; padding: 16px 20px; height: 150px;
-  box-sizing: border-box; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14); }}
-.num {{ color: #1f4d33; font-family: Fraunces, Georgia, serif; font-size: 2.3rem; font-weight: 700; line-height: 1.1; }}
-.label {{ color: #1d2a22; font-size: 0.95rem; font-weight: 700; margin-top: 4px; }}
-.note {{ color: #5a7d4f; font-size: 0.8rem; margin-top: 2px; line-height: 1.3; }}
+body {{ margin: 0; font-family: "Nunito Sans", "Segoe UI", system-ui, sans-serif; color: #fbf8f1; }}
+.strip {{ display: flex; align-items: flex-start; }}
+.cell {{ flex: 1 1 0; padding: 4px 18px; border-left: 1px solid rgba(251, 248, 241, 0.35); min-width: 0;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45); }}
+.cell:first-child {{ padding-left: 0.5rem; border-left: 0; flex-grow: 1.3; }}
+.num {{ font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 2.1rem; line-height: 1.05; }}
+.lead .num {{ font-size: 3.2rem; }}
+.label {{ font-size: 0.92rem; font-weight: 700; margin-top: 4px; }}
+.note {{ font-size: 0.78rem; opacity: 0.85; margin-top: 2px; line-height: 1.3; }}
+@media (max-width: 520px) {{
+  .cell {{ padding: 2px 8px; }}
+  .num {{ font-size: 1.45rem; }}
+  .lead .num {{ font-size: 2.1rem; }}
+  .label {{ font-size: 0.74rem; }}
+  .note {{ display: none; }}
+}}
 </style>
 <script>
-const el = document.querySelector(".num"), v = +el.dataset.v, p = el.dataset.p, s = el.dataset.s;
-const fmt = n => p + Math.round(n).toLocaleString("en-US") + s;
-if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {{
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+document.querySelectorAll(".num").forEach((el, i) => {{
+  const v = +el.dataset.v, p = el.dataset.p, s = el.dataset.s;
+  const fmt = n => p + Math.round(n).toLocaleString("en-US") + s;
+  if (reduce) return;
   el.textContent = fmt(0);
   setTimeout(() => {{
     const t0 = performance.now();
@@ -160,14 +176,11 @@ if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {{
       if (k < 1) requestAnimationFrame(step);
     }};
     requestAnimationFrame(step);
-  }}, {delay_ms});
-}}
+  }}, 150 * i);
+}});
 </script>"""
 
 
-LEAF_SVG = ('<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="#3f8f5a" '
-            'd="M20 3C10 3 4 8 4 15c0 2 .6 3.7 1.6 5l1.5-1.6C9 14 12.5 11 17 9c-4 3-7 6.5-8.6 10.6'
-            'C9.6 20.5 11 21 13 21c6 0 8-7 7-18z"/></svg>')
 WORD_S, MAX_TYPE_S = 0.025, 1.5
 
 
@@ -187,7 +200,7 @@ def ai_bubble(bubble_id: str, text: str, header_html: str = "") -> None:
     animate = bubble_id not in typed and bubble_id in TYPE_ON_FIRST_LOAD and FIRST_LOAD
     typed.add(bubble_id)
     with st.container(key=f"bubble_{bubble_id}"):
-        st.markdown(f'<div class="ch-ai-label">{LEAF_SVG}<span>CleanHour AI</span></div>{header_html}',
+        st.markdown(f'<div class="ch-ai-label">CleanHour AI</div>{header_html}',
                     unsafe_allow_html=True)
         if animate:
             dots = st.empty()
@@ -297,8 +310,13 @@ html {{ scroll-behavior: smooth; }}
 .ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(20, 40, 25, 0.25); }}
 [data-testid="stMainBlockContainer"] {{ position: relative; z-index: 1; padding-top: 1.5rem; }}
 /* Cream panels with a soft shadow; the photo shows in the gaps. */
-[class*="st-key-panel"] {{ background: rgba(251, 248, 241, 0.95); border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12); padding: 1.5rem 1.75rem; }}
+[class*="st-key-panel"] {{ background: rgba(251, 248, 241, 0.95); border-radius: 4px;
+  border: 1px solid rgba(29, 42, 34, 0.12); padding: 1.5rem 1.75rem; }}
+/* No hover animations anywhere. */
+button, a, [role="tab"], [data-baseweb="tab"], [data-baseweb="tab-highlight"] {{ transition: none !important; }}
+/* Skeleton placeholder while data loads. */
+.ch-skel {{ background: #ebe5d6; border-radius: 4px; animation: chSkel 1.2s ease-in-out infinite alternate; }}
+@keyframes chSkel {{ from {{ opacity: 1; }} to {{ opacity: 0.45; }} }}
 /* Fonts. */
 html, body, [data-testid="stApp"], .stMarkdown, p, li, label, input, textarea, button,
 [data-baseweb="tab"], [data-testid="stCaptionContainer"] {{ font-family: "Nunito Sans", "Segoe UI", system-ui, sans-serif; }}
@@ -316,10 +334,10 @@ a {{ color: #1f4d33; }}
   color: #1d2a22; animation: chFadeUp 500ms ease-out both; }}
 .ch-answer .ch-time {{ color: #3f8f5a; }}
 [role="tabpanel"] {{ animation: chTabIn 350ms ease-out both; }}
-[class*="st-key-bubble"] {{ background: #f3eddf; border-radius: 4px 16px 16px 16px; padding: 0.85rem 1.15rem 0.4rem;
-  max-width: 48rem; box-shadow: 0 2px 10px rgba(29, 42, 34, 0.08); gap: 0.25rem; margin: 0.25rem 0 0.75rem; }}
-.ch-ai-label {{ display: flex; align-items: center; gap: 6px; color: #5a7d4f; font-size: 0.78rem;
-  font-weight: 700; letter-spacing: 0.02em; line-height: 1.4; margin-bottom: 0.4rem; }}
+[class*="st-key-bubble"] {{ background: #f3eddf; border-radius: 4px; padding: 0.85rem 1.15rem 0.4rem;
+  max-width: 48rem; border: 1px solid rgba(29, 42, 34, 0.12); gap: 0.25rem; margin: 0.25rem 0 0.75rem; }}
+.ch-ai-label {{ color: #1f4d33; font-size: 0.85rem; font-variant: small-caps;
+  font-weight: 700; letter-spacing: 0.03em; line-height: 1.4; margin-bottom: 0.4rem; }}
 [class*="st-key-bubble"] .stMarkdown {{ margin-bottom: 0; }}
 [class*="st-key-bubble"] [data-testid="stMarkdownContainer"] {{ overflow: visible; }}
 .ch-typing {{ display: flex; gap: 5px; padding: 6px 0 4px; }}
@@ -371,17 +389,15 @@ default_tonnes = sum(yearly_tonnes(r["kWh per run"], r["Hours per run"], r["Runs
                      for _, r in DEFAULT_APPLIANCES.iterrows())
 pct = metrics["improvement_vs_yesterday_pct"]
 cards = [
-    (round(pct), "", "%", "More Accurate Than Yesterday's Pattern",
+    (round(pct), "", "%", "More accurate than yesterday's pattern",
      "Lower error than \"same hour yesterday\", 61-day test"),
-    (round(default_tonnes), "", "", f"Tonnes CO2/yr for {HOUSEHOLDS:,} Princeton Homes",
+    (round(default_tonnes), "", "", f"Tonnes CO2/yr for {HOUSEHOLDS:,} Princeton homes",
      "Scheduling the default appliances"),
 ]
 if stats is not None and timing_gain > 0:
-    cards.append((round(grid_gap / timing_gain), "~", "x", "Grid Choice vs Timing in NJ",
+    cards.append((round(grid_gap / timing_gain), "~", "x", "Grid choice vs timing in NJ",
                   f"California: {grid_gap:.0f} g/kWh lower; best PJM hour: {timing_gain:.0f}"))
-for col, (i, card) in zip(st.columns(len(cards)), enumerate(cards)):
-    with col:
-        components.html(count_up_card(*card, delay_ms=150 * i), height=172)
+components.html(stat_strip(cards), height=130)
 
 with st.container(key="panel_why"):
     st.markdown(
@@ -395,6 +411,10 @@ with st.container(key="panel_tabs"):
         ["Tomorrow", "Check the AI (past days)", "Scheduler", "Where vs when", "How the AI works"])
 
 # ---------------------------------------------------------------- Tomorrow
+with tab_tomorrow:
+    loading = st.empty()
+    loading.markdown('<div class="ch-skel" style="height:470px" aria-label="Loading forecast"></div>',
+                     unsafe_allow_html=True)
 live_ok, live_day, live_info = False, None, {}
 try:
     live_day, live_info = live_forecast()
@@ -403,6 +423,7 @@ try:
         live_day = day_from_hours(live_day, live_info["date"])
 except Exception:
     live_ok = False
+loading.empty()
 
 with tab_tomorrow:
     if live_ok:
@@ -630,3 +651,14 @@ with st.container(key="panel_footer"):
         f"Background photo: [{BG_CREDIT[0]}]({BG_CREDIT[1]}) on [Unsplash](https://unsplash.com/license). "
         f"Code: {link('GitHub', 'github.com/Darrenk328/cleanhour')}.  \n"
         "© 2026 CleanHour, hackPHS")
+    with st.expander("About & privacy"):
+        st.markdown(
+            "- CleanHour asks for no personal data and has no accounts, tracking, or advertising cookies. "
+            "Streamlit's usage statistics are turned off; Streamlit may set one technical security cookie.\n"
+            "- Scheduler inputs exist only in your current session and are discarded when you close the tab.\n"
+            "- Forecasts are estimates from a statistical model and should not be taken as advice.\n"
+            "- Fonts load from Google Fonts, which sees your IP address like any web request.\n"
+            f"- Sources and licenses: {link('EIA Form 930')} (U.S. government, public domain); "
+            f"{link('Open-Meteo')} (CC BY 4.0); {link('ERA5')} (Copernicus license); "
+            f"{link('IPCC AR5 Annex III', 'IPCC AR5')} emission factors; background photo under the "
+            "Unsplash License; charts by Apache ECharts (Apache 2.0) and Plotly (MIT).")

@@ -9,3 +9,9 @@ font = "'Nunito Sans', 'Segoe UI', system-ui, sans-serif"
 headingFont = "Fraunces, Georgia, serif"
 headingFontWeights = [700, 650, 600, 600, 600, 600]
 baseRadius = "12px"
+
+[server]
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false

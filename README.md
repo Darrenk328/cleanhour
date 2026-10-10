@@ -9,7 +9,7 @@ than when you plug in.
 
 ## What it does
 
-The Streamlit app sits on a forest background with cream content panels. Five tabs sit under a header with three live headline numbers, and short "CleanHour AI" messages explain each result in plain language (generated from the model's outputs, not a chatbot):
+The Streamlit app sits on a forest background with cream content panels. Five tabs sit under a header with three live headline numbers, and short "CleanHour AI" messages explain each result in plain language (written from the model's outputs):
 
 - **Tomorrow.** A day-ahead forecast from the latest EIA data (API v2) and the Open-Meteo
   weather forecast, with an "80% likely range" band, the cleanest 3-hour window, and a

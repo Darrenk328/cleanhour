@@ -145,10 +145,10 @@ SRC_MODEL_HTML = SRC_EIA_HTML + f'; weather <a href="{LINK_METEO}">Open-Meteo</a
 SRC_EIA_MD = f"Source: [EIA Form 930]({LINK_EIA}); [IPCC AR5]({LINK_IPCC}) emission factors"
 SRC_MODEL_MD = SRC_EIA_MD + f"; weather [Open-Meteo]({LINK_METEO})"
 
-# Fuel-mix colors (validated for colorblind separation in stacking order). Coal and
-# "other" are deliberately gray; the legend and hover name every fuel.
-FUEL_COLORS = {"Nuclear": "#8b6bc4", "Coal": "#4b4b4b", "Gas": "#c07a2c",
-               "Other": "#9aa3ab", "Wind": "#3a7fc1", "Solar": "#d9a400"}
+# Fuel-mix colors, muted and earthy, in stacking order (bottom to top). Wind and "Other" are
+# kept apart because they are hard to tell apart side by side; legend and hover name every fuel.
+FUEL_COLORS = {"Nuclear": "#7a8c6e", "Coal": "#4a4a45", "Other": "#a8a39a",
+               "Gas": "#b07a4f", "Wind": "#6b8fa3", "Solar": "#d9a441"}
 
 
 def _layout(fig, title: str, xlabel: str, ylabel: str, source: str, height: int = 420):
@@ -284,7 +284,8 @@ def spread_fig(stats: pd.DataFrame, focus: str = "PJM"):
 import html
 import json
 
-ECHARTS_URL = "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"
+ECHARTS_LOCAL = "/app/static/echarts.min.js"  # bundled copy, served by Streamlit static serving
+ECHARTS_URL = "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"  # fallback
 FONTS_URL = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
              "&family=Nunito+Sans:wght@400;600;700&display=swap")
 
@@ -301,15 +302,19 @@ html, body {{ margin: 0; background: transparent; font-family: {FONT_BODY}; colo
 h3 {{ font-family: {FONT_HEAD}; font-size: 17px; font-weight: 700; color: {INK}; margin: 2px 0 6px;
   line-height: 1.25; }}
 #c {{ width: 100%; height: {height}px; }}
+#c.sk {{ background: #ebe5d6; border-radius: 4px; animation: skp 1.2s ease-in-out infinite alternate; }}
+@keyframes skp {{ from {{ opacity: 1; }} to {{ opacity: 0.45; }} }}
+@media (prefers-reduced-motion: reduce) {{ #c.sk {{ animation: none; }} }}
 .err {{ font-size: 14px; color: {INK}; padding: 12px 4px; }}
 </style></head><body>
 <h3>{html.escape(payload["title"])}</h3>
-<div id="c" role="img" aria-label="{html.escape(aria)}"></div>
-<script src="{ECHARTS_URL}"></script>
+<div id="c" class="sk" role="img" aria-label="{html.escape(aria)}"></div>
+<script src="{ECHARTS_LOCAL}"></script>
+<script>if (!window.echarts) document.write('<script src="{ECHARTS_URL}"><\/script>');</script>
 <script>
 (() => {{
   const el = document.getElementById("c");
-  if (!window.echarts) {{ el.innerHTML = '<p class="err">This chart could not load. Check your connection and reload.</p>'; return; }}
+  if (!window.echarts) {{ el.classList.remove("sk"); el.innerHTML = '<p class="err">This chart could not load. Check your connection and reload.</p>'; return; }}
   const D = {json.dumps(payload)};
   const C = {{green: "{GREEN}", leaf: "{LEAF}", moss: "{MOSS}", ink: "{INK}", gray: "{GRAY}",
              grid: "{GRID}", windowFill: "{GREEN_LIGHT}", band: "{BAND}"}};
@@ -330,6 +335,7 @@ h3 {{ font-family: {FONT_HEAD}; font-size: 17px; font-weight: 700; color: {INK};
   const tryStart = () => {{
     if (started || !inView || el.clientWidth === 0) return;
     started = true;
+    el.classList.remove("sk");
     chart.resize();
     {script}
     relayout();

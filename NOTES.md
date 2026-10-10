@@ -115,3 +115,15 @@
   heading row above each chart, charts start only once visible with real width, and
   width-dependent layout (legend room, label spacing) is recomputed on resize. The
   "Daily average" legend swatch is a thin vertical bar (path icon) to match the ticks.
+- De-vibecode pass (tag pre-devibe marks the version before): metric cards replaced by one
+  stat strip on the hero (thin rules, lead figure larger, count-up kept); panels and bubbles
+  use 4px corners and a 1px border, no shadows; AI label is plain small-caps text; hover
+  transitions disabled; muted pulse placeholders while live data and each chart load.
+- ECharts is bundled at static/echarts.min.js (served by Streamlit static serving as
+  application/javascript) with the jsDelivr copy as a fallback.
+- Fuel palette as specified (sage, charcoal, clay, ochre, slate blue, gray). Gas and "Other"
+  are still close for full-color vision (validator ΔE 12, target 15); the stack order keeps
+  Wind and "Other" apart, and white separators, the legend, and hover labels name each fuel.
+- About & privacy: Streamlit usage statistics are turned off in config so "no personal data"
+  holds. The text says Streamlit may set one technical security cookie (its XSRF cookie) and
+  that Google Fonts sees visitors' IP addresses, rather than claiming no cookies at all.
