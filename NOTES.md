@@ -141,3 +141,11 @@
   https://unsplash.com/photos/windmill-on-grass-field-during-golden-hour-0w-uTa0Xz7w), 336 KB.
   The background veil changed from a green tint to a neutral dark rgba(22,24,20,0.32) so the
   sunset stays warm, and the photo is positioned to keep the turbines and horizon in frame.
+- Background, round 3 (on request, "something like" a supplied stock image of turbines and
+  solar panels under a blue sky): the supplied image's license is unknown, so a free
+  Unsplash photo with the same feel is used instead: "White wind turbines on green grass
+  field under blue and white cloudy sky" by Waldemar Brandt (Unsplash License). No free
+  photo with both turbines and panels in that style turned up; an APPA solar-panel photo
+  under a similar sky was the runner-up. The veil is now a cool dark rgba(14,30,42,0.34)
+  and the stat strip has a stronger text shadow so cream text stays readable on the
+  brighter sky.

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 TZ = "America/New_York"
 HOUSEHOLDS = 10_000
 BG_IMAGE = ROOT / "assets" / "nature.jpg"
-BG_CREDIT = ("Karsten Würth", "https://unsplash.com/photos/windmill-on-grass-field-during-golden-hour-0w-uTa0Xz7w")
+BG_CREDIT = ("Waldemar Brandt", "https://unsplash.com/photos/white-wind-turbines-on-green-grass-field-under-blue-and-white-cloudy-sky-during-daytime-8NBACfGMFtw")
 HERO_IMAGE = ROOT / "assets" / "princeton.jpg"
 HERO_CREDIT = "Blair Hall, Princeton University"  # source not yet known
 FONTS_CSS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
@@ -158,7 +158,7 @@ def stat_strip(stats: list[tuple]) -> str:
 body {{ margin: 0; font-family: "Nunito Sans", "Segoe UI", system-ui, sans-serif; color: #fbf8f1; }}
 .strip {{ display: flex; align-items: flex-start; }}
 .cell {{ flex: 1 1 0; padding: 4px 18px; border-left: 1px solid rgba(251, 248, 241, 0.35); min-width: 0;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45); }}
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 2px 14px rgba(0, 0, 0, 0.45); }}
 .cell:first-child {{ padding-left: 0.5rem; border-left: 0; flex-grow: 1.3; }}
 .num {{ font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 2.1rem; line-height: 1.05; }}
 .lead .num {{ font-size: 3.2rem; }}
@@ -318,9 +318,9 @@ html {{ scroll-behavior: smooth; }}
 /* Nature background (fixed, moved at 30% scroll speed by the parallax script). */
 [data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], header {{ background: transparent; }}
 .ch-bg {{ position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: -1; {bg_css}
-  background-size: cover; background-position: center 35%; filter: saturate(0.9); will-change: transform;
+  background-size: cover; background-position: center 40%; filter: saturate(0.95); will-change: transform;
   pointer-events: none; }}
-.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(22, 24, 20, 0.32); }}
+.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(14, 30, 42, 0.34); }}
 [data-testid="stMainBlockContainer"] {{ position: relative; z-index: 1; padding-top: 1.5rem; }}
 /* Cream panels with a soft shadow; the photo shows in the gaps. */
 [class*="st-key-panel"] {{ background: rgba(251, 248, 241, 0.95); border-radius: 4px;
