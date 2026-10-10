@@ -110,3 +110,8 @@
   hidden state that pauses animation frames, so the chart sequences, typing, and parallax
   were confirmed through the DOM and chart state (series loaded, band opacity reached 1,
   window markArea added, background translateY = 30% of scroll), not by watching them.
+- Fix: ECharts titles rendered one letter per line when a chart initialised while its tab
+  was hidden (zero width gave the title a negative wrap width). Titles are now an HTML
+  heading row above each chart, charts start only once visible with real width, and
+  width-dependent layout (legend room, label spacing) is recomputed on resize. The
+  "Daily average" legend swatch is a thin vertical bar (path icon) to match the ticks.
