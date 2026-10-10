@@ -19,7 +19,9 @@ ROOT = Path(__file__).resolve().parent
 TZ = "America/New_York"
 HOUSEHOLDS = 10_000
 BG_IMAGE = ROOT / "assets" / "nature.jpg"
-BG_CREDIT = ("Sebastian Unrau", "https://unsplash.com/photos/trees-on-forest-with-sun-rays-sp-p7uuT0tw")
+BG_CREDIT = ("Kuno Schweizer", "https://unsplash.com/photos/a-green-mountain-range-under-a-cloudy-sky-4DnqmA8mHp8")
+HERO_IMAGE = ROOT / "assets" / "princeton.jpg"
+HERO_CREDIT = "Princeton University campus"  # source not yet known
 FONTS_CSS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
              "&family=Nunito+Sans:wght@400;600;700&display=swap")
 
@@ -96,6 +98,15 @@ def bg_b64() -> str | None:
     """Background photo as base64 (embedded so no static file server is needed)."""
     try:
         return base64.b64encode(BG_IMAGE.read_bytes()).decode()
+    except OSError:
+        return None
+
+
+@st.cache_data
+def hero_b64() -> str | None:
+    """Princeton header photo as base64; None if the file is missing."""
+    try:
+        return base64.b64encode(HERO_IMAGE.read_bytes()).decode()
     except OSError:
         return None
 
@@ -297,6 +308,8 @@ DEFAULT_APPLIANCES = pd.DataFrame([
 # ---------------------------------------------------------------- page style + hero
 bg = bg_b64()
 bg_css = f"background-image: url('data:image/jpeg;base64,{bg}');" if bg else "background: #1f4d33;"
+hero = hero_b64()
+hero_css = f"background-image: url('data:image/jpeg;base64,{hero}');" if hero else ""
 st.markdown(f"""
 <style>
 @import url("{FONTS_CSS}");
@@ -324,12 +337,19 @@ h1, h2, h3, h4, .ch-hero-title, .ch-answer {{ font-family: Fraunces, Georgia, se
 a {{ color: #1f4d33; }}
 @keyframes chFadeUp {{ from {{ opacity: 0; transform: translateY(12px); }} to {{ opacity: 1; transform: none; }} }}
 @keyframes chTabIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: none; }} }}
-/* Hero text sits directly on the photo. */
-.ch-hero {{ padding: 3.5rem 0.5rem 2.25rem; }}
-.ch-hero-title {{ color: #fbf8f1; font-size: 3.6rem; font-weight: 700; line-height: 1.05; margin: 0;
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45); animation: chFadeUp 600ms ease-out both; }}
-.ch-hero-sub {{ color: #fbf8f1; font-size: 1.25rem; margin: 0.6rem 0 0 0; max-width: 40rem;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5); animation: chFadeUp 600ms ease-out 150ms both; }}
+/* Princeton banner: photo under a white veil (low opacity), text on top. */
+@keyframes chZoom {{ from {{ transform: scale(1); }} to {{ transform: scale(1.05); }} }}
+.ch-hero {{ position: relative; width: 100%; height: 300px; border-radius: 4px; overflow: hidden;
+  border: 1px solid rgba(29, 42, 34, 0.12); background-color: #f3f8f5; margin-top: 0.5rem; }}
+.ch-hero-photo {{ position: absolute; inset: 0; {hero_css} background-size: cover;
+  background-position: center 30%; animation: chZoom 20s ease-out 1 forwards; }}
+.ch-hero-veil {{ position: absolute; inset: 0; background: rgba(255, 255, 255, 0.78); }}
+.ch-hero-text {{ position: relative; height: 100%; display: flex; flex-direction: column;
+  justify-content: center; padding: 0 2.25rem; }}
+.ch-hero-title {{ color: #14301f; font-size: 3.4rem; font-weight: 700; line-height: 1.05; margin: 0;
+  animation: chFadeUp 600ms ease-out both; }}
+.ch-hero-sub {{ color: #3a4148; font-size: 1.2rem; margin: 0.6rem 0 0 0; max-width: 40rem;
+  animation: chFadeUp 600ms ease-out 150ms both; }}
 .ch-answer {{ font-size: 2.1rem; font-weight: 700; line-height: 1.2; margin: 0.5rem 0 0.75rem 0;
   color: #1d2a22; animation: chFadeUp 500ms ease-out both; }}
 .ch-answer .ch-time {{ color: #3f8f5a; }}
@@ -347,9 +367,10 @@ a {{ color: #1f4d33; }}
 .ch-typing i:nth-child(3) {{ animation-delay: 240ms; }}
 @keyframes chDot {{ to {{ opacity: 1; }} }}
 @media (max-width: 700px) {{
-  .ch-hero {{ padding: 2rem 0.25rem 1.25rem; }}
-  .ch-hero-title {{ font-size: 2.5rem; }}
-  .ch-hero-sub {{ font-size: 1.05rem; }}
+  .ch-hero {{ height: 200px; }}
+  .ch-hero-text {{ padding: 0 1.1rem; }}
+  .ch-hero-title {{ font-size: 2.3rem; }}
+  .ch-hero-sub {{ font-size: 1rem; }}
   .ch-answer {{ font-size: 1.6rem; }}
   [class*="st-key-panel"] {{ padding: 1.1rem 1rem; }}
 }}
@@ -360,8 +381,11 @@ a {{ color: #1f4d33; }}
 </style>
 <div class="ch-bg" aria-hidden="true"></div>
 <div class="ch-hero" role="banner">
-  <div class="ch-hero-title">CleanHour</div>
-  <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
+  <div class="ch-hero-photo"></div><div class="ch-hero-veil"></div>
+  <div class="ch-hero-text">
+    <div class="ch-hero-title">CleanHour</div>
+    <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 components.html(PARALLAX_JS, height=0)
@@ -648,7 +672,8 @@ with st.container(key="panel_footer"):
         f"Data: {link('EIA Form 930')} hourly generation and demand forecasts; weather from "
         f"{link('Open-Meteo')} ({link('ERA5')} reanalysis); emission factors from "
         f"{link('IPCC AR5 Annex III')}; grid context from {link('PJM')}.  \n"
-        f"Background photo: [{BG_CREDIT[0]}]({BG_CREDIT[1]}) on [Unsplash](https://unsplash.com/license). "
+        + (f"Header photo: {HERO_CREDIT}. " if hero else "")
+        + f"Background photo: [{BG_CREDIT[0]}]({BG_CREDIT[1]}) on [Unsplash](https://unsplash.com/license). "
         f"Code: {link('GitHub', 'github.com/Darrenk328/cleanhour')}.  \n"
         "© 2026 CleanHour, hackPHS")
     with st.expander("About & privacy"):

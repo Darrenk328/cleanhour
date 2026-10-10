@@ -127,3 +127,10 @@
 - About & privacy: Streamlit usage statistics are turned off in config so "no personal data"
   holds. The text says Streamlit may set one technical security cookie (its XSRF cookie) and
   that Google Fonts sees visitors' IP addresses, rather than claiming no cookies at all.
+- Header and background swap (on request): the Princeton photo banner is restored from the
+  pre-nature tag (white veil at 0.78, slow 20 s zoom, 300 px / 200 px on small screens,
+  now with 4px corners and a 1px border to match the panels). Its source and license are
+  still unknown; the footer credits "Princeton University campus". The background is now
+  "A green mountain range under a cloudy sky" by Kuno Schweizer on Unsplash (Unsplash
+  License, https://unsplash.com/photos/a-green-mountain-range-under-a-cloudy-sky-4DnqmA8mHp8),
+  re-encoded to 310 KB. Its darker sky keeps the cream stat strip readable.
