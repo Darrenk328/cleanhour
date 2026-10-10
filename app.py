@@ -19,9 +19,9 @@ ROOT = Path(__file__).resolve().parent
 TZ = "America/New_York"
 HOUSEHOLDS = 10_000
 BG_IMAGE = ROOT / "assets" / "nature.jpg"
-BG_CREDIT = ("Kuno Schweizer", "https://unsplash.com/photos/a-green-mountain-range-under-a-cloudy-sky-4DnqmA8mHp8")
+BG_CREDIT = ("Karsten Würth", "https://unsplash.com/photos/windmill-on-grass-field-during-golden-hour-0w-uTa0Xz7w")
 HERO_IMAGE = ROOT / "assets" / "princeton.jpg"
-HERO_CREDIT = "Princeton University campus"  # source not yet known
+HERO_CREDIT = "Blair Hall, Princeton University"  # source not yet known
 FONTS_CSS = ("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700"
              "&family=Nunito+Sans:wght@400;600;700&display=swap")
 
@@ -318,9 +318,9 @@ html {{ scroll-behavior: smooth; }}
 /* Nature background (fixed, moved at 30% scroll speed by the parallax script). */
 [data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], header {{ background: transparent; }}
 .ch-bg {{ position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: -1; {bg_css}
-  background-size: cover; background-position: center top; filter: saturate(0.85); will-change: transform;
+  background-size: cover; background-position: center 35%; filter: saturate(0.9); will-change: transform;
   pointer-events: none; }}
-.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(20, 40, 25, 0.25); }}
+.ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(22, 24, 20, 0.32); }}
 [data-testid="stMainBlockContainer"] {{ position: relative; z-index: 1; padding-top: 1.5rem; }}
 /* Cream panels with a soft shadow; the photo shows in the gaps. */
 [class*="st-key-panel"] {{ background: rgba(251, 248, 241, 0.95); border-radius: 4px;
@@ -342,7 +342,7 @@ a {{ color: #1f4d33; }}
 .ch-hero {{ position: relative; width: 100%; height: 300px; border-radius: 4px; overflow: hidden;
   border: 1px solid rgba(29, 42, 34, 0.12); background-color: #f3f8f5; margin-top: 0.5rem; }}
 .ch-hero-photo {{ position: absolute; inset: 0; {hero_css} background-size: cover;
-  background-position: center 30%; animation: chZoom 20s ease-out 1 forwards; }}
+  background-position: center 45%; animation: chZoom 20s ease-out 1 forwards; }}
 .ch-hero-veil {{ position: absolute; inset: 0; background: rgba(255, 255, 255, 0.78); }}
 .ch-hero-text {{ position: relative; height: 100%; display: flex; flex-direction: column;
   justify-content: center; padding: 0 2.25rem; }}

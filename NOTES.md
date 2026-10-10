@@ -134,3 +134,10 @@
   "A green mountain range under a cloudy sky" by Kuno Schweizer on Unsplash (Unsplash
   License, https://unsplash.com/photos/a-green-mountain-range-under-a-cloudy-sky-4DnqmA8mHp8),
   re-encoded to 310 KB. Its darker sky keeps the cream stat strip readable.
+- Header and background, round 2 (on request): header photo is now the user-supplied Blair
+  Hall image (1000x667, converted from WebP to JPEG, 148 KB; source/license still unknown,
+  credited as "Blair Hall, Princeton University"). Background is "Windmill on grass field
+  during golden hour" by Karsten Würth on Unsplash (Unsplash License,
+  https://unsplash.com/photos/windmill-on-grass-field-during-golden-hour-0w-uTa0Xz7w), 336 KB.
+  The background veil changed from a green tint to a neutral dark rgba(22,24,20,0.32) so the
+  sunset stays warm, and the photo is positioned to keep the turbines and horizon in frame.
