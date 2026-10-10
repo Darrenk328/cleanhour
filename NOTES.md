@@ -60,3 +60,16 @@
   updates the chart in place on a date change (needed for the transition to show); in one
   test the chart element was rebuilt. Plotly's JS transitions are not covered by the CSS
   prefers-reduced-motion rule; the count-up cards do check it.
+- Final polish: Streamlit's menu, toolbar, and header are hidden with CSS. Plotly
+  transitions are applied only to charts that change with user input (Tomorrow, Check the
+  AI, Play the day), not to the static comparison and importance charts.
+- README figures: the EIA "about 31% of U.S. energy-related CO2" (electric power sector,
+  2022) was checked on the linked EIA FAQ. The "NJ warmed about 4°F since 1900, about twice
+  the global average" figure is as provided and attributed to the Office of the NJ State
+  Climatologist (Rutgers); its home page was checked to load but does not state the figure.
+- Photo credit is still unknown; the footer and README say "Princeton University campus"
+  instead of inventing a source.
+- Verification caveat: the in-app browser reported the page as hidden, which pauses
+  animation frames, so some screenshots showed stale or mid-animation frames. Final states
+  were confirmed through the DOM (animations finished, chart data correct, no exceptions,
+  no horizontal scroll at 400 px).

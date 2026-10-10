@@ -105,7 +105,8 @@ if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {{
 
 
 def plot(fig, key: str | None = None):
-    fig.update_layout(transition={"duration": 500, "easing": "cubic-in-out"})
+    if key:  # keyed charts change with user input; animate those updates
+        fig.update_layout(transition={"duration": 500, "easing": "cubic-in-out"})
     st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG, key=key)
     meta = fig.layout.meta
     if isinstance(meta, dict) and meta.get("source"):
@@ -179,6 +180,7 @@ bg_css = f"background-image: url('data:image/jpeg;base64,{bg}');" if bg else ""
 st.markdown(f"""
 <style>
 html {{ scroll-behavior: smooth; }}
+#MainMenu, [data-testid="stToolbar"], header {{ visibility: hidden; }}
 [data-testid="stMainBlockContainer"] {{ padding-top: 2rem; }}
 @keyframes chFadeUp {{ from {{ opacity: 0; transform: translateY(12px); }} to {{ opacity: 1; transform: none; }} }}
 @keyframes chTabIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: none; }} }}
