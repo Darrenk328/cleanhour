@@ -93,9 +93,20 @@ def day_from_hours(df: pd.DataFrame, date) -> pd.DataFrame:
 
 def test_day_frame(date) -> pd.DataFrame:
     d = preds[preds["date_local"] == date].sort_values("ts_local")
-    day = (d.set_index("hour")[["forecast", "intensity", "baseline_yesterday"]]
+    day = (d.set_index("hour")[["forecast", "q10", "q90", "intensity", "baseline_yesterday"]]
            .rename(columns={"intensity": "actual", "baseline_yesterday": "baseline"}))
     return day_from_hours(day, date)
+
+
+def confidence_line(day: pd.DataFrame, s: int, length: int = 3) -> str:
+    """High confidence if the window's upper (90%) bound sits below the day's median forecast."""
+    if "q90" not in day or day["q90"].isna().all():
+        return ""
+    upper = window_mean(day["q90"], s, length)
+    if upper < float(day["forecast"].median()):
+        return ("**High confidence:** even the high end of the likely range in this window is below "
+                "a typical hour.")
+    return "**Close call:** several hours are similar, so the exact window matters less."
 
 
 def cleanest(day: pd.DataFrame, col: str = "forecast", length: int = 3):
@@ -232,6 +243,7 @@ with tab_tomorrow:
         st.markdown(f"## Cleanest time to run appliances: {charts.window_label(start_ts.hour)}")
         st.markdown(f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a "
                     f"{avg:.0f} gCO2/kWh daily average ({100 * (avg - best) / avg:.0f}% cleaner).")
+        st.markdown(confidence_line(day, s))
         plot(charts.forecast_fig(day, start_ts, title, baseline_label=base_label))
 
     st.subheader("Play the day")
@@ -283,6 +295,10 @@ with tab_check:
             m3.metric("Cleanest window", hit,
                       help=f"AI picked {charts.window_label(start_ts.hour)}; actual cleanest was "
                            f"{charts.window_label(true_ts.hour)}.")
+        if s is not None:
+            st.markdown(confidence_line(cday, s))
+        inside = ((cday["actual"] >= cday["q10"]) & (cday["actual"] <= cday["q90"])).mean()
+        st.caption(f"Actual values fell inside the 80% likely range in {100 * inside:.0f}% of hours that day.")
         plot(charts.forecast_fig(cday, start_ts, f"Forecast vs actual, {picked:%b %d}, PJM"))
 
 # ---------------------------------------------------------------- Scheduler
@@ -363,7 +379,8 @@ with tab_how:
         "ensemble (scikit-learn HistGradientBoostingRegressor) that learned from about 19 months of "
         "PJM data how the fuel mix responds to the time of day, sunlight, wind, temperature, and "
         "expected demand. It was tested on the last two months, which it never saw during training, "
-        "and compared against two simple rules a person could use without any AI.")
+        "and compared against a plain linear regression and two simple rules a person could use "
+        "without any AI.")
     mrows = [{"Method": name, "Mean abs. error (gCO2/kWh)": round(m["mae_g_per_kwh"], 1),
               "Exact window hit": f"{100 * m['hit_rate_exact']:.0f}%",
               "Window overlap": f"{100 * m['hit_rate_overlap']:.0f}%",
@@ -376,7 +393,21 @@ with tab_how:
         f"\"same hour yesterday\" and **{metrics['improvement_vs_hour_avg_pct']:.0f}% lower** than the "
         "hour-of-day average. Picking the single cleanest window is harder: the model hits it exactly "
         "more often than either rule, but the overlap rate and the extra intensity paid are close to "
-        "the simple rules, because PJM's hourly swing within a day is small.")
+        "the simple rules, because PJM's hourly swing within a day is small. Gradient boosting beats "
+        "linear regression because it captures non-linear effects (for example, sunlight only matters "
+        "in daytime, and demand matters more in the evening); a straight-line model can only add effects "
+        f"up, which shows most when picking the cleanest window "
+        f"({100 * metrics['models']['Linear regression']['hit_rate_exact']:.0f}% exact hits vs "
+        f"{100 * metrics['models']['AI model (gradient boosting)']['hit_rate_exact']:.0f}%).")
+    st.markdown(
+        f"**Uncertainty.** Two more boosted models predict the 10th and 90th percentile of each hour, "
+        f"giving an \"80% likely range\". On their own they were overconfident: only "
+        f"{metrics['band_raw_coverage_pct']:.0f}% of test hours fell inside. After calibrating on the last "
+        f"30 training days (conformal widening by {metrics['band_pad_g_per_kwh']:.1f} gCO2/kWh), "
+        f"**{metrics['band_coverage_pct']:.0f}%** of test hours fall inside the range, "
+        + ("close to the 80% target." if abs(metrics["band_coverage_pct"] - 80) <= 3 else
+           "under the 80% target, so treat the range as somewhat optimistic."
+           if metrics["band_coverage_pct"] < 80 else "above the 80% target, so the range is cautious."))
     plot(charts.importance_fig(importance))
     st.markdown("**Limitations**")
     st.markdown(

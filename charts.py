@@ -13,6 +13,7 @@ import pandas as pd
 
 GREEN = "#1f7a4d"
 GREEN_LIGHT = "#d6eadf"
+BAND = "rgba(31, 122, 77, 0.18)"  # forecast uncertainty ribbon
 INK = "#1f2933"
 GRAY = "#8a939b"
 GRID = "#e6e9ec"
@@ -174,6 +175,13 @@ def forecast_fig(day: pd.DataFrame, window_start, title: str, window_len: int = 
             f"Cleanest 3-hour window ({window_label(window_start.hour, window_len)})"),
             marker={"symbol": "square", "size": 14, "color": GREEN_LIGHT}, hoverinfo="skip"))
     hover = "%{x|%b %d, %I:%M %p}<br>%{y:.0f} gCO2/kWh<extra>%{fullData.name}</extra>"
+    if {"q10", "q90"} <= set(day.columns) and day["q10"].notna().any():
+        fig.add_trace(go.Scatter(x=day.index, y=day["q90"], mode="lines", line={"width": 0},
+                                 showlegend=False, name="90% upper", legendgroup="band",
+                                 hovertemplate="%{y:.0f} gCO2/kWh<extra>90% upper</extra>"))
+        fig.add_trace(go.Scatter(x=day.index, y=day["q10"], mode="lines", line={"width": 0},
+                                 fill="tonexty", fillcolor=BAND, name="80% likely range", legendgroup="band",
+                                 hovertemplate="%{y:.0f} gCO2/kWh<extra>10% lower</extra>"))
     if "baseline" in day and day["baseline"].notna().any():
         fig.add_trace(go.Scatter(x=day.index, y=day["baseline"], name=baseline_label, mode="lines",
                                  line={"color": GRAY, "width": 2, "dash": "dash"}, hovertemplate=hover))

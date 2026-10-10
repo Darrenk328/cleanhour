@@ -14,6 +14,13 @@
       "avg_regret_g_per_kwh": 3.515510514512402,
       "days": 61
     },
+    "Linear regression": {
+      "mae_g_per_kwh": 9.029162187002594,
+      "hit_rate_exact": 0.14754098360655737,
+      "hit_rate_overlap": 0.7540983606557377,
+      "avg_regret_g_per_kwh": 5.0315413419126225,
+      "days": 61
+    },
     "Baseline: same hour yesterday": {
       "mae_g_per_kwh": 14.251652495674971,
       "hit_rate_exact": 0.26229508196721313,
@@ -29,6 +36,10 @@
       "days": 61
     }
   },
+  "band_coverage_pct": 74.86338797814209,
+  "band_raw_coverage_pct": 52.254098360655746,
+  "band_pad_g_per_kwh": 4.7867788362802,
+  "band_avg_width_g_per_kwh": 25.518178329053242,
   "improvement_vs_yesterday_pct": 38.64459246683152,
   "improvement_vs_hour_avg_pct": 64.65967749396523
 }
