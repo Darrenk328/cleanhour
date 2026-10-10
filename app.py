@@ -114,31 +114,28 @@ def hero_b64() -> str | None:
 PARALLAX_JS = """
 <script>
 // Parallax: the page content scrolls normally; the background moves at 30% speed.
+// The background layer has a fixed CSS size (130% of the viewport) and is only ever
+// translated, never resized, so the photo does not rescale while the page loads. It moves
+// through its extra 30% of height over the first screenful of scrolling, then holds still.
 (() => {
   const P = window.parent, doc = P.document;
   if (P.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const bg = doc.querySelector(".ch-bg"), sc = doc.querySelector('[data-testid="stMain"]');
   if (!bg || !sc) return;  // CSS fallback: background stays fixed while content scrolls
   if (P.__chParallaxOff) P.__chParallaxOff();
-  const size = () => {
-    const extra = Math.max(0, sc.scrollHeight - sc.clientHeight) * 0.3;
-    bg.style.height = (P.innerHeight + extra) + "px";
-  };
   let queued = false;
   const onScroll = () => {
     if (queued) return;
     queued = true;
     P.requestAnimationFrame(() => {
-      bg.style.transform = "translate3d(0," + (-sc.scrollTop * 0.3) + "px,0)";
+      const travel = Math.max(0, bg.offsetHeight - P.innerHeight);
+      bg.style.transform = "translate3d(0," + (-Math.min(sc.scrollTop * 0.3, travel)) + "px,0)";
       queued = false;
     });
   };
-  const ro = new P.ResizeObserver(size);
-  ro.observe(sc.firstElementChild || sc);
   sc.addEventListener("scroll", onScroll, {passive: true});
-  P.addEventListener("resize", size);
-  P.__chParallaxOff = () => { ro.disconnect(); sc.removeEventListener("scroll", onScroll); P.removeEventListener("resize", size); };
-  size(); onScroll();
+  P.__chParallaxOff = () => sc.removeEventListener("scroll", onScroll);
+  onScroll();
 })();
 </script>
 """
@@ -317,7 +314,7 @@ html {{ scroll-behavior: smooth; }}
 #MainMenu, [data-testid="stToolbar"], header {{ visibility: hidden; }}
 /* Nature background (fixed, moved at 30% scroll speed by the parallax script). */
 [data-testid="stApp"], [data-testid="stAppViewContainer"], [data-testid="stMain"], header {{ background: transparent; }}
-.ch-bg {{ position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: -1; {bg_css}
+.ch-bg {{ position: fixed; top: 0; left: 0; right: 0; height: 130vh; height: 130lvh; z-index: -1; {bg_css}
   background-size: cover; background-position: center 40%; filter: saturate(0.95); will-change: transform;
   pointer-events: none; }}
 .ch-bg::after {{ content: ""; position: absolute; inset: 0; background: rgba(14, 30, 42, 0.34); }}

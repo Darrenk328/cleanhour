@@ -149,3 +149,8 @@
   under a similar sky was the runner-up. The veil is now a cool dark rgba(14,30,42,0.34)
   and the stat strip has a stronger text shadow so cream text stays readable on the
   brighter sky.
+- Fix: the background rescaled (zoomed and jumped) on refresh because the parallax script
+  sized it to the page length, which keeps growing while the app loads. The layer now has a
+  fixed CSS size (130% of the viewport, using lvh so mobile address bars do not resize it)
+  and the script only translates it: 30% of scroll speed until it has used its extra 30%
+  of height (about one screen of scrolling), then it holds still.
