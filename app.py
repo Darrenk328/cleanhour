@@ -1,7 +1,10 @@
 """CleanHour: when is the PJM grid cleanest, and does it matter?  Run: streamlit run app.py"""
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
+import base64
+import io
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -9,8 +12,28 @@ import charts
 import data
 import model
 
-st.set_page_config(page_title="CleanHour", layout="wide")
-TOMORROW = "Tomorrow (live forecast)"
+ROOT = Path(__file__).resolve().parent
+TZ = "America/New_York"
+HOUSEHOLDS = 10_000
+HERO_IMAGE = ROOT / "assets" / "princeton.jpg"
+PHOTO_CREDIT = "Princeton University campus"  # replace with the photo's source
+
+LINKS = {
+    "EIA Form 930": "https://www.eia.gov/electricity/gridmonitor/",
+    "Open-Meteo": "https://open-meteo.com/",
+    "ERA5": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels",
+    "IPCC AR5 Annex III": "https://www.ipcc.ch/site/assets/uploads/2018/02/ipcc_wg3_ar5_annex-iii.pdf",
+    "PJM": "https://www.pjm.com/about-pjm/who-we-are",
+    "GitHub": "https://github.com/Darrenk328/cleanhour",
+}
+PLOTLY_CONFIG = {"displaylogo": False, "responsive": True}
+
+st.set_page_config(page_title="CleanHour | Princeton grid carbon forecast",
+                   page_icon=str(ROOT / "static" / "leaf.png"), layout="wide")
+
+
+def link(name: str, text: str | None = None) -> str:
+    return f"[{text or name}]({LINKS[name]})"
 
 
 # ---------------------------------------------------------------- loaders
@@ -26,26 +49,58 @@ def grid():
 
 @st.cache_data(ttl=1800, show_spinner="Fetching live EIA and weather data...")
 def live_forecast():
-    bundle = artifacts()[0]
-    return model.forecast_tomorrow(bundle)
+    return model.forecast_tomorrow(artifacts()[0])
 
 
-def show(fig):
-    st.pyplot(fig, clear_figure=True)
-    plt.close(fig)
+@st.cache_data(ttl=1800, show_spinner=False)
+def live_mix():
+    return data.fetch_live_pjm(days=10)
 
 
-# ---------------------------------------------------------------- helpers
-HOUSEHOLDS = 10_000
-DEFAULT_APPLIANCES = pd.DataFrame([
-    {"Appliance": "EV charging", "Include": True, "kWh per run": 7.0, "Hours per run": 3, "Runs per week": 7},
-    {"Appliance": "Clothes dryer", "Include": True, "kWh per run": 3.0, "Hours per run": 1, "Runs per week": 3},
-    {"Appliance": "Dishwasher", "Include": True, "kWh per run": 1.5, "Hours per run": 2, "Runs per week": 5},
-])
+@st.cache_data
+def hero_b64() -> str | None:
+    """Downscaled JPEG as base64 so the page stays light; None if the photo is missing."""
+    if not HERO_IMAGE.exists():
+        return None
+    try:
+        from PIL import Image
+        im = Image.open(HERO_IMAGE).convert("RGB")
+        im.thumbnail((1600, 1600))
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=80)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
+
+
+def plot(fig):
+    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+    meta = fig.layout.meta
+    if isinstance(meta, dict) and meta.get("source"):
+        st.caption(meta["source"])
 
 
 def window_mean(values, start, length):
     return float(pd.Series(values).iloc[start:start + length].mean())
+
+
+def day_from_hours(df: pd.DataFrame, date) -> pd.DataFrame:
+    """Re-index a 0..23 hour frame to naive local timestamps for Plotly hover labels."""
+    out = df[~df.index.duplicated()].copy()
+    out.index = pd.Timestamp(date) + pd.to_timedelta(out.index.astype(int), unit="h")
+    return out
+
+
+def test_day_frame(date) -> pd.DataFrame:
+    d = preds[preds["date_local"] == date].sort_values("ts_local")
+    day = (d.set_index("hour")[["forecast", "intensity", "baseline_yesterday"]]
+           .rename(columns={"intensity": "actual", "baseline_yesterday": "baseline"}))
+    return day_from_hours(day, date)
+
+
+def cleanest(day: pd.DataFrame, col: str = "forecast", length: int = 3):
+    s = model.cleanest_window(day[col].to_numpy(), length)
+    return (s, day.index[s]) if s is not None else (None, None)
 
 
 @st.cache_data
@@ -68,9 +123,38 @@ def yearly_tonnes(kwh: float, hours: int, runs_per_week: float) -> float:
     return kwh * test_period_saving(hours) * runs_per_week * 52 * HOUSEHOLDS / 1e6  # g -> tonnes
 
 
-# ---------------------------------------------------------------- header
-st.title("CleanHour")
-st.caption("Forecasting hourly carbon intensity on the PJM grid, the grid that serves Princeton, NJ.")
+DEFAULT_APPLIANCES = pd.DataFrame([
+    {"Appliance": "EV charging", "Include": True, "kWh per run": 7.0, "Hours per run": 3, "Runs per week": 7},
+    {"Appliance": "Clothes dryer", "Include": True, "kWh per run": 3.0, "Hours per run": 1, "Runs per week": 3},
+    {"Appliance": "Dishwasher", "Include": True, "kWh per run": 1.5, "Hours per run": 2, "Runs per week": 5},
+])
+
+
+# ---------------------------------------------------------------- hero
+bg = hero_b64()
+bg_css = f"background-image: url('data:image/jpeg;base64,{bg}');" if bg else ""
+st.markdown(f"""
+<style>
+[data-testid="stMainBlockContainer"] {{ padding-top: 2rem; }}
+.ch-hero {{ position: relative; width: 100%; height: 300px; border-radius: 12px; overflow: hidden; margin-bottom: 1rem;
+  background-color: #f3f8f5; {bg_css} background-size: cover; background-position: center 30%; }}
+.ch-hero::before {{ content: ""; position: absolute; inset: 0; background: rgba(255,255,255,0.78); }}
+.ch-hero-text {{ position: relative; height: 100%; display: flex; flex-direction: column;
+  justify-content: center; padding: 0 2.25rem; }}
+.ch-hero-title {{ color: #14301f; font-size: 3.4rem; font-weight: 800; line-height: 1.05; margin: 0; }}
+.ch-hero-sub {{ color: #3a4148; font-size: 1.2rem; margin: 0.6rem 0 0 0; max-width: 40rem; }}
+@media (max-width: 700px) {{
+  .ch-hero {{ height: 200px; }}
+  .ch-hero-text {{ padding: 0 1.1rem; }}
+  .ch-hero-title {{ font-size: 2.3rem; }}
+  .ch-hero-sub {{ font-size: 1rem; }}
+}}
+</style>
+<div class="ch-hero" role="banner"><div class="ch-hero-text">
+  <div class="ch-hero-title">CleanHour</div>
+  <p class="ch-hero-sub">Forecasting the cleanest hours on the grid that powers Princeton, NJ</p>
+</div></div>
+""", unsafe_allow_html=True)
 
 try:
     bundle, metrics, importance, preds = artifacts()
@@ -79,210 +163,238 @@ except Exception:
              "then reload this page.")
     st.stop()
 
+test_days = sorted(preds["date_local"].unique())
+
+# ---------------------------------------------------------------- headline metrics
 try:
     stats = data.daily_spread_stats(grid())
-    pjm = stats.loc[data.BA_NAME["PJM"]]
-    ciso = stats.loc[data.BA_NAME["CISO"]]
+    pjm, ciso = stats.loc[data.BA_NAME["PJM"]], stats.loc[data.BA_NAME["CISO"]]
     grid_gap, timing_gain = pjm["mean"] - ciso["mean"], pjm["mean_drop"]
 except Exception:
     stats = None
 default_tonnes = sum(yearly_tonnes(r["kWh per run"], r["Hours per run"], r["Runs per week"])
                      for _, r in DEFAULT_APPLIANCES.iterrows())
-c1, c2, c3 = st.columns(3)
 pct = metrics["improvement_vs_yesterday_pct"]
+c1, c2, c3 = st.columns(3)
 c1.metric("more accurate than yesterday", f"{pct:.0f}%",
-          help=f"{pct:.0f}% lower mean error than \"same hour yesterday\" on the 61-day test set.")
-c2.metric(f"tonnes CO2/yr if {HOUSEHOLDS:,} homes used it", f"{default_tonnes:,.0f}",
-          help=f"{default_tonnes:,.0f} tonnes CO2/yr if {HOUSEHOLDS:,} Princeton homes used it "
-               "with the default appliances below.")
+          help=f"{pct:.0f}% lower mean error than yesterday's pattern (same hour yesterday) "
+               "on the 61-day test set.")
+c2.metric(f"t CO2/yr for {HOUSEHOLDS:,} homes", f"{default_tonnes:,.0f}",
+          help=f"{default_tonnes:,.0f} tonnes CO2 per year if {HOUSEHOLDS:,} Princeton homes "
+               "scheduled the default appliances in the Scheduler tab.")
 if stats is not None and timing_gain > 0:
     ratio = grid_gap / timing_gain
-    c3.metric("grid choice vs timing in NJ", f"{ratio:.0f}x",
-              help=f"Grid choice matters {ratio:.0f}x more than timing in NJ: switching to California's "
-                   f"grid saves about {grid_gap:.0f} gCO2/kWh, the cleanest PJM hour about {timing_gain:.0f}.")
+    c3.metric("grid choice vs timing in NJ", f"~{ratio:.0f}x",
+              help=f"Grid choice matters about {ratio:.0f}x more than timing: California's grid averages "
+                   f"{grid_gap:.0f} gCO2/kWh below PJM, the cleanest PJM hour about {timing_gain:.0f} below "
+                   "a typical one.")
 
-st.subheader("Why it matters")
 st.markdown(
-    "PJM runs the largest power grid in the US, serving about 65 million people in 13 states and "
-    "Washington, DC. In 2025-2026 its power came mostly from natural gas (42%), nuclear (31%), and "
-    "coal (17%), so a kilowatt-hour drawn in Princeton averaged about 356 gCO2. Some hours are "
-    "cleaner than others, and an AI forecast can tell you which ones before the day starts.  \n"
-    "<small>Sources: PJM Interconnection (pjm.com, service territory); EIA Form 930 hourly "
-    "generation by fuel; IPCC AR5 lifecycle emission factors.</small>",
-    unsafe_allow_html=True,
-)
+    "**Why it matters.** PJM, the largest US grid, serves about 65 million people; in 2025-2026 its "
+    "power was mostly gas, nuclear, and coal, averaging about 356 gCO2/kWh. Knowing the cleanest "
+    f"hours a day ahead lets flexible loads avoid the dirtiest ones. Sources: {link('PJM')}, "
+    f"{link('EIA Form 930')}, {link('IPCC AR5 Annex III', 'IPCC AR5')}.")
 
+tab_tomorrow, tab_check, tab_sched, tab_where, tab_how = st.tabs(
+    ["Tomorrow", "Check the AI (past days)", "Scheduler", "Where vs when", "How the AI works"])
 
-# ---------------------------------------------------------------- day picker
-test_days = sorted(preds["date_local"].unique(), reverse=True)
-options = [TOMORROW] + [d.strftime("%a %b %d, %Y") for d in test_days]
-choice = st.selectbox("Pick a day", options, index=0,
-                      help="Tomorrow uses live EIA data and the Open-Meteo weather forecast. "
-                           "Past days come from the held-out test period, so you can compare the "
-                           "forecast with what actually happened.")
-
-day, info = None, {}
-is_live = choice == TOMORROW
-if is_live:
-    try:
-        day, info = live_forecast()
-        if day["forecast"].isna().all():
-            raise ValueError("empty forecast")
-        st.caption(
-            f"Forecast for {info['date']:%A, %B %d}. Latest EIA data: "
-            f"{info['latest_data_utc'].tz_convert('America/New_York'):%b %d, %I %p} ET."
-            + (" Yesterday's values are not published yet, so the most recent available day "
-               "stands in for them." if info["lag_filled"] else ""))
-    except Exception:
-        st.warning("The live forecast is unavailable right now (no EIA_API_KEY in .env, or the EIA "
-                   "or weather service did not respond). Showing the most recent test day instead.")
-        is_live = False
-        choice = options[1]
-
-if day is None:
-    date = test_days[options.index(choice) - 1]
-    d = preds[preds["date_local"] == date].sort_values("ts_local")
-    day = (d.set_index("hour")[["forecast", "intensity", "baseline_yesterday"]]
-           .rename(columns={"intensity": "actual", "baseline_yesterday": "baseline"}))
-    day = day[~day.index.duplicated()]  # DST fall-back repeats an hour
-
-if len(day) < model.WINDOW or day["forecast"].isna().all():
-    st.warning("Not enough hourly data for this day. Please pick another day.")
-    st.stop()
-
-start = model.cleanest_window(day["forecast"].to_numpy())
-start_hour = int(day.index[start]) if start is not None else None
-label = charts.window_label(start_hour) if start_hour is not None else "not available"
-st.markdown(f"## Cleanest time to run appliances: {label}")
-avg, best = day["forecast"].mean(), day["forecast"].iloc[start:start + 3].mean()
-st.markdown(f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a "
-            f"{day['forecast'].mean():.0f} gCO2/kWh daily average ({100 * (avg - best) / avg:.0f}% cleaner).")
-
-title = ("Tomorrow's forecast" if is_live else f"Forecast vs actual, {choice}") + ", PJM"
-base_label = ("Baseline: same hour, latest available day" if is_live and info.get("lag_filled")
-              else "Baseline: same hour yesterday")
-show(charts.forecast_chart(day, start_hour, title, baseline_label=base_label))
-if not is_live and "actual" in day:
-    true = model.cleanest_window(day["actual"].to_numpy())
-    if true is not None:
-        hit = "matched" if true == start else ("overlapped" if abs(true - start) < 3 else "missed")
-        st.caption(f"Actual cleanest window that day: {charts.window_label(int(day.index[true]))}. "
-                   f"The forecast {hit} it.")
-
-
-# ---------------------------------------------------------------- scheduler
-st.divider()
-st.subheader("Appliance scheduler")
-st.markdown("Pick your appliances and edit the numbers. Each one is scheduled into its cleanest "
-            "window on the chosen day.")
+# ---------------------------------------------------------------- Tomorrow
+live_ok, live_day, live_info = False, None, {}
 try:
-    table = st.data_editor(
-        DEFAULT_APPLIANCES, hide_index=True, num_rows="dynamic", width="stretch",
-        column_config={
-            "kWh per run": st.column_config.NumberColumn(min_value=0.0, max_value=200.0, step=0.5),
-            "Hours per run": st.column_config.NumberColumn(min_value=1, max_value=12, step=1),
-            "Runs per week": st.column_config.NumberColumn(min_value=0, max_value=21, step=1),
-        })
-    # Score with actual intensity when we have it (past days), otherwise the forecast.
-    use_actual = not is_live and "actual" in day and day["actual"].notna().all()
-    score = day["actual"] if use_actual else day["forecast"]
-    rows, skipped, yearly_t = [], [], 0.0
-    for _, r in table.iterrows():
+    live_day, live_info = live_forecast()
+    if live_day["forecast"].notna().sum() >= 3:
+        live_ok = True
+        live_day = day_from_hours(live_day, live_info["date"])
+except Exception:
+    live_ok = False
+
+with tab_tomorrow:
+    if live_ok:
+        through = (live_info["latest_data_utc"] + pd.Timedelta(hours=1)).tz_convert(TZ)
+        st.success(f"Live EIA data through {through:%b %d, %I %p} ET. "
+                   f"Forecast for {live_info['date']:%A, %B %d}.")
+        if live_info.get("lag_filled"):
+            st.caption("EIA has not published yesterday's full data yet, so the most recent available "
+                       "day stands in for \"same hour yesterday\".")
+        day, title = live_day, "Tomorrow's forecast, PJM"
+        base_label = ("Baseline: same hour, latest day" if live_info.get("lag_filled")
+                      else "Baseline: same hour yesterday")
+    else:
+        st.warning("Live data is unavailable right now (no EIA_API_KEY in .env, or the EIA or weather "
+                   "service did not respond). Showing the most recent test day's forecast instead.")
+        day, base_label = test_day_frame(test_days[-1]).drop(columns="actual"), "Baseline: same hour yesterday"
+        title = f"Forecast for {test_days[-1]:%b %d}, PJM"
+    s, start_ts = cleanest(day)
+    if s is None:
+        st.warning("Not enough hourly data to pick a window for this day.")
+    else:
+        avg, best = day["forecast"].mean(), window_mean(day["forecast"], s, 3)
+        st.markdown(f"## Cleanest time to run appliances: {charts.window_label(start_ts.hour)}")
+        st.markdown(f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a "
+                    f"{avg:.0f} gCO2/kWh daily average ({100 * (avg - best) / avg:.0f}% cleaner).")
+        plot(charts.forecast_fig(day, start_ts, title, baseline_label=base_label))
+
+    st.subheader("Play the day")
+    st.markdown("Watch PJM's fuel mix hour by hour: solar rises at midday and gas fills the evening "
+                "peak. Tomorrow has not happened yet, so this plays recent days with published data.")
+    try:
+        g = grid()
+        mix = g[g["ba"] == "PJM"].dropna(subset=["intensity"])[["ts_utc", *data.FUELS]]
         try:
-            name = str(r["Appliance"]).strip() or "Appliance"
-            kwh, hours, runs = float(r["kWh per run"]), int(r["Hours per run"]), float(r["Runs per week"])
+            mix = pd.concat([mix, live_mix()[["ts_utc", *data.FUELS]]])
+        except Exception:
+            pass  # bulk CSV alone is fine
+        mix = mix.drop_duplicates("ts_utc", keep="last").set_index("ts_utc").sort_index()
+        mix.index = mix.index.tz_convert(TZ).tz_localize(None)
+        mw = mix.clip(lower=0)
+        gw = pd.DataFrame({
+            "Nuclear": mw["nuclear"], "Coal": mw["coal"], "Gas": mw["gas"],
+            "Other": mw[["oil", "hydro", "geothermal", "other"]].sum(axis=1),
+            "Wind": mw["wind"], "Solar": mw["solar"]}, index=mw.index) / 1000
+        counts = gw.groupby(gw.index.date).size()
+        full = sorted([d for d, n in counts.items() if n >= 23], reverse=True)[:14]
+        pick = st.selectbox("Day to play", full, format_func=lambda d: f"{d:%a %b %d, %Y}")
+        one = gw[gw.index.date == pick]
+        plot(charts.mix_animation_fig(one, f"PJM fuel mix, {pick:%b %d}"))
+    except Exception:
+        st.warning("The fuel-mix animation is unavailable. Run `python data.py` to rebuild the data.")
+
+# ---------------------------------------------------------------- Check the AI
+with tab_check:
+    st.markdown(f"These days ({test_days[0]:%b %d} to {test_days[-1]:%b %d, %Y}) were held out of "
+                "training, so the forecast below is a fair test against what actually happened.")
+    picked = st.date_input("Test day", value=test_days[-1], min_value=test_days[0],
+                           max_value=test_days[-1], format="MM/DD/YYYY")
+    if picked not in set(test_days):
+        st.warning("No test data for that date. Pick a day between "
+                   f"{test_days[0]:%b %d} and {test_days[-1]:%b %d, %Y}.")
+    else:
+        cday = test_day_frame(picked)
+        s, start_ts = cleanest(cday)
+        t, true_ts = cleanest(cday, "actual")
+        err = (cday["forecast"] - cday["actual"]).abs().mean()
+        base_err = (cday["baseline"] - cday["actual"]).abs().mean()
+        m1, m2, m3 = st.columns(3)
+        m1.metric("AI error that day", f"{err:.1f} gCO2/kWh")
+        m2.metric("Baseline error", f"{base_err:.1f} gCO2/kWh",
+                  help="Mean absolute error of \"same hour yesterday\" on this day.")
+        if s is not None and t is not None:
+            hit = "Matched" if s == t else ("Overlapped" if abs(s - t) < 3 else "Missed")
+            m3.metric("Cleanest window", hit,
+                      help=f"AI picked {charts.window_label(start_ts.hour)}; actual cleanest was "
+                           f"{charts.window_label(true_ts.hour)}.")
+        plot(charts.forecast_fig(cday, start_ts, f"Forecast vs actual, {picked:%b %d}, PJM"))
+
+# ---------------------------------------------------------------- Scheduler
+with tab_sched:
+    sched_days = ([("Tomorrow (forecast)", None)] if live_ok else []) + \
+                 [(f"{d:%a %b %d, %Y} (actual)", d) for d in reversed(test_days)]
+    label = st.selectbox("Day to schedule", [x[0] for x in sched_days])
+    sday_date = dict(sched_days)[label]
+    sday = live_day if sday_date is None else test_day_frame(sday_date)
+    st.markdown("Pick your appliances and edit the numbers. Each one is scheduled into its cleanest "
+                "window, chosen from the AI forecast.")
+    table = st.data_editor(DEFAULT_APPLIANCES, hide_index=True, num_rows="dynamic", width="stretch",
+                           key="appliances")
+    use_actual = "actual" in sday and sday["actual"].notna().all()
+    score = sday["actual"] if use_actual else sday["forecast"]
+    rows, errors, yearly_t = [], [], 0.0
+    for i, r in table.iterrows():
+        name = str(r.get("Appliance") or f"Row {i + 1}").strip()
+        if not bool(r.get("Include")):
+            continue
+        try:
+            kwh, hours, runs = float(r["kWh per run"]), float(r["Hours per run"]), float(r["Runs per week"])
         except (TypeError, ValueError):
-            skipped.append(str(r.get("Appliance", "a row")))
+            errors.append(f"{name}: a number is blank. Fill in kWh, hours, and runs per week.")
             continue
-        if not bool(r["Include"]):
-            continue
-        if not (kwh > 0 and 1 <= hours <= min(12, len(day)) and runs >= 0):
-            skipped.append(name)
-            continue
-        s = model.cleanest_window(day["forecast"].to_numpy(), hours)
-        sums = score.rolling(hours).mean().dropna()
-        worst = float(sums.max())
-        typical = float(score.mean())
-        at = window_mean(score.to_numpy(), s, hours)
-        rows.append({
-            "Appliance": name,
-            "Run at": charts.window_label(int(day.index[s]), hours),
-            "kg CO2 at that time": round(kwh * at / 1000, 2),
-            "Saved vs dirtiest time (kg)": round(kwh * (worst - at) / 1000, 2),
-            "Saved vs typical time (kg)": round(kwh * (typical - at) / 1000, 2),
-        })
-        yearly_t += yearly_tonnes(kwh, hours, runs)
-    if skipped:
-        st.warning("Skipped rows with missing or out-of-range numbers: " + ", ".join(skipped)
-                   + ". Use kWh above 0 and 1 to 12 hours.")
+        if pd.isna(kwh) or pd.isna(hours) or pd.isna(runs):
+            errors.append(f"{name}: a number is blank. Fill in kWh, hours, and runs per week.")
+        elif kwh <= 0:
+            errors.append(f"{name}: kWh per run must be above 0 (got {kwh:g}).")
+        elif not (1 <= hours <= 12) or hours != int(hours):
+            errors.append(f"{name}: hours per run must be a whole number from 1 to 12 (got {hours:g}).")
+        elif runs < 0:
+            errors.append(f"{name}: runs per week cannot be negative (got {runs:g}).")
+        else:
+            hours = int(hours)
+            s = model.cleanest_window(sday["forecast"].to_numpy(), hours)
+            worst = float(score.rolling(hours).mean().max())
+            at = window_mean(score, s, hours)
+            rows.append({
+                "Appliance": name,
+                "Run at": charts.window_label(sday.index[s].hour, hours),
+                "kg CO2": round(kwh * at / 1000, 2),
+                "Saved vs dirtiest (kg)": round(kwh * (worst - at) / 1000, 2),
+                "Saved vs typical (kg)": round(kwh * (float(score.mean()) - at) / 1000, 2),
+            })
+            yearly_t += yearly_tonnes(kwh, hours, runs)
+    if errors:
+        st.error("Some rows need fixing and were skipped:\n\n" + "\n".join(f"- {e}" for e in errors))
     if rows:
         out = pd.DataFrame(rows)
         st.dataframe(out, hide_index=True, width="stretch")
-        basis = "actual" if use_actual else "forecast"
         st.markdown(
-            f"On this day, scheduling saves **{out['Saved vs dirtiest time (kg)'].sum():.2f} kg CO2** "
-            f"versus the dirtiest time and **{out['Saved vs typical time (kg)'].sum():.2f} kg** versus a "
-            f"typical time (scored on {basis} intensity).")
+            f"Scheduling saves **{out['Saved vs dirtiest (kg)'].sum():.2f} kg CO2** versus the dirtiest "
+            f"time and **{out['Saved vs typical (kg)'].sum():.2f} kg** versus a typical time "
+            f"(scored on {'actual' if use_actual else 'forecast'} intensity).")
         st.markdown(f"### If {HOUSEHOLDS:,} Princeton households did this: {yearly_t:,.0f} tonnes CO2/year")
         st.caption("Yearly figure: average saving versus a typical time across the 61 test days, using "
-                   "the model's picks scored against actual intensity, times runs per week, 52 weeks, "
-                   f"and {HOUSEHOLDS:,} households. Average-intensity accounting; see Limitations.")
-    else:
-        st.info("Select at least one appliance to see a schedule.")
-except Exception:
-    st.warning("The scheduler could not run with these inputs. Try resetting the table by reloading the page.")
+                   "the AI's picks scored against actual intensity, times runs per week, 52 weeks, and "
+                   f"{HOUSEHOLDS:,} households. Average-intensity accounting; see How the AI works.")
+    elif not errors:
+        st.info("Tick Include on at least one appliance to see a schedule.")
 
-
-# ---------------------------------------------------------------- where vs when
-st.divider()
-st.subheader("Where vs when")
-try:
+# ---------------------------------------------------------------- Where vs when
+with tab_where:
     if stats is None:
-        raise ValueError("no grid stats")
-    show(charts.spread_chart(stats))
+        st.warning("The grid comparison data is unavailable. Run `python data.py` to rebuild it.")
+    else:
+        plot(charts.spread_fig(stats))
+        st.markdown(
+            f"**Takeaway:** In PJM, picking the cleanest hour saves about {timing_gain:.0f} gCO2/kWh. "
+            f"Switching to California's grid would save about {grid_gap:.0f}. "
+            "For New Jersey, a cleaner grid matters more than better timing.")
+
+# ---------------------------------------------------------------- How the AI works
+with tab_how:
     st.markdown(
-        f"**Takeaway:** In PJM, picking the cleanest hour saves about {timing_gain:.0f} gCO2/kWh. "
-        f"Switching to California's grid would save about {grid_gap:.0f}. "
-        "For New Jersey, a cleaner grid matters more than better timing.")
-except Exception:
-    st.warning("The grid comparison data is unavailable. Run `python data.py` to rebuild it.")
+        "Each night the model predicts all 24 hours of the next day. It is a gradient-boosted tree "
+        "ensemble (scikit-learn HistGradientBoostingRegressor) that learned from about 19 months of "
+        "PJM data how the fuel mix responds to the time of day, sunlight, wind, temperature, and "
+        "expected demand. It was tested on the last two months, which it never saw during training, "
+        "and compared against two simple rules a person could use without any AI.")
+    mrows = [{"Method": name, "Mean abs. error (gCO2/kWh)": round(m["mae_g_per_kwh"], 1),
+              "Exact window hit": f"{100 * m['hit_rate_exact']:.0f}%",
+              "Window overlap": f"{100 * m['hit_rate_overlap']:.0f}%",
+              "Extra vs true best (gCO2/kWh)": round(m["avg_regret_g_per_kwh"], 1)}
+             for name, m in metrics["models"].items()]
+    st.dataframe(pd.DataFrame(mrows), hide_index=True, width="stretch")
+    st.markdown(
+        f"Test period {metrics['test_start']} to {metrics['test_end']} ({metrics['test_hours']:,} hours). "
+        f"The model's error is **{metrics['improvement_vs_yesterday_pct']:.0f}% lower** than "
+        f"\"same hour yesterday\" and **{metrics['improvement_vs_hour_avg_pct']:.0f}% lower** than the "
+        "hour-of-day average. Picking the single cleanest window is harder: the model hits it exactly "
+        "more often than either rule, but the overlap rate and the extra intensity paid are close to "
+        "the simple rules, because PJM's hourly swing within a day is small.")
+    plot(charts.importance_fig(importance))
+    st.markdown("**Limitations**")
+    st.markdown(
+        "- Production-based, not consumption-based: imports from neighboring grids are not counted.\n"
+        "- Average, not marginal, intensity: the plant that actually responds to your extra load "
+        "(usually gas) can be dirtier than the average.\n"
+        "- Backtests use actual weather as a stand-in for weather forecasts, so they are somewhat "
+        "optimistic.\n"
+        "- Live mode uses EIA data that lags about a day, so tomorrow's forecast is less certain than "
+        "the backtest.\n"
+        "- Emission factors are IPCC lifecycle medians; \"other\" and unknown fuels are assumed gas-like.")
 
-
-# ---------------------------------------------------------------- how the AI works
+# ---------------------------------------------------------------- footer
 st.divider()
-st.subheader("How the AI works")
-st.markdown(
-    "Each night the model predicts all 24 hours of the next day. It is a gradient-boosted tree "
-    "ensemble (scikit-learn HistGradientBoostingRegressor) that learned from about 19 months of "
-    "PJM data how the fuel mix responds to the time of day, sunlight, wind, temperature, and "
-    "expected demand. It was tested on the last two months, which it never saw during training, "
-    "and compared against two simple rules a person could use without any AI."
-)
-rows = []
-for name, m in metrics["models"].items():
-    rows.append({"Method": name, "Mean abs. error (gCO2/kWh)": round(m["mae_g_per_kwh"], 1),
-                 "Cleanest window exact hit": f"{100 * m['hit_rate_exact']:.0f}%",
-                 "Window overlap hit": f"{100 * m['hit_rate_overlap']:.0f}%",
-                 "Extra intensity vs true best (gCO2/kWh)": round(m["avg_regret_g_per_kwh"], 1)})
-st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-st.markdown(
-    f"Test period {metrics['test_start']} to {metrics['test_end']} ({metrics['test_hours']:,} hours). "
-    f"The model's error is **{metrics['improvement_vs_yesterday_pct']:.0f}% lower** than "
-    f"\"same hour yesterday\" and **{metrics['improvement_vs_hour_avg_pct']:.0f}% lower** than the "
-    "hour-of-day average. Picking the single cleanest window is harder: the model hits it exactly "
-    "more often than either rule, but the overlap rate and the extra intensity paid are close to "
-    "the simple rules, because PJM's hourly swing within a day is small."
-)
-show(charts.importance_chart(importance))
-
-st.markdown("**Limitations**")
-st.markdown(
-    "- Production-based, not consumption-based: imports from neighboring grids are not counted.\n"
-    "- Average, not marginal, intensity: the plant that actually responds to your extra load "
-    "(usually gas) can be dirtier than the average.\n"
-    "- Backtests use actual weather as a stand-in for weather forecasts, so they are somewhat "
-    "optimistic.\n"
-    "- Live mode uses EIA data that lags about a day, so tomorrow's forecast is less certain than "
-    "the backtest.\n"
-    "- Emission factors are IPCC lifecycle medians; \"other\" and unknown fuels are assumed gas-like."
-)
+st.caption(
+    f"Data: {link('EIA Form 930')} hourly generation and demand forecasts; weather from "
+    f"{link('Open-Meteo')} ({link('ERA5')} reanalysis); emission factors from "
+    f"{link('IPCC AR5 Annex III')}; grid context from {link('PJM')}.  \n"
+    + (f"Photo: {PHOTO_CREDIT}. " if bg else "")
+    + f"Code: {link('GitHub', 'github.com/Darrenk328/cleanhour')}.  \n"
+    + "© 2026 CleanHour, hackPHS")

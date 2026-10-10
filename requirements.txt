@@ -2,6 +2,8 @@ joblib==1.6.0
 matplotlib==3.11.2
 numpy==2.5.4
 pandas==3.0.6
+pillow==12.3.0
+plotly==7.1.0
 python-dotenv==1.2.4
 requests==2.34.2
 scikit-learn==1.9.1

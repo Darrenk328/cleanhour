@@ -34,3 +34,13 @@
   is staler than in the backtest. EIA's day-ahead demand forecast for tomorrow is usually
   not published yet; missing hours reuse today's same-hour forecast. Live accuracy is
   therefore expected to be worse than the backtest MAE.
+- UI (pre-ui tag marks the version before this): tabs, Plotly charts, "Play the day"
+  fuel-mix animation, hero banner. `st.plotly_chart(..., width="stretch")` is used instead
+  of `use_container_width=True`, which Streamlit 1.65 deprecates; same effect.
+- "Play the day" shows recent days with published fuel-mix data, since tomorrow's mix
+  has not happened yet. It starts on the full day so it reads before Play is pressed.
+- Chart source notes are linked captions under each chart (Plotly annotations below the
+  legend were clipped on narrow screens).
+- Hero photo `assets/princeton.jpg` came from the chat upload (800x534). Its source is
+  unknown, so the footer credit reads "Princeton University campus" until a real
+  source is supplied (`PHOTO_CREDIT` in app.py).
