@@ -265,9 +265,8 @@ def confidence_line(day: pd.DataFrame, s: int, length: int = 3) -> str:
         return ""
     upper = window_mean(day["q90"], s, length)
     if upper < float(day["forecast"].median()):
-        return ("**High confidence:** even the high end of the likely range in this window is below "
-                "a typical hour.")
-    return "**Close call:** several hours are similar, so the exact window matters less."
+        return "**High confidence:** this window should beat a typical hour."
+    return "**Close call:** several hours are about as clean."
 
 
 def cleanest(day: pd.DataFrame, col: str = "forecast", length: int = 3):
@@ -410,21 +409,20 @@ default_tonnes = sum(yearly_tonnes(r["kWh per run"], r["Hours per run"], r["Runs
                      for _, r in DEFAULT_APPLIANCES.iterrows())
 pct = metrics["improvement_vs_yesterday_pct"]
 cards = [
-    (round(pct), "", "%", "More accurate than yesterday's pattern",
-     "Lower error than \"same hour yesterday\", 61-day test"),
-    (round(default_tonnes), "", "", f"Tonnes CO2/yr for {HOUSEHOLDS:,} Princeton homes",
-     "Scheduling the default appliances"),
+    (round(pct), "", "%", "More accurate than yesterday's pattern", "Tested on 61 unseen days"),
+    (round(default_tonnes), "", "", f"Tonnes CO2 saved a year by {HOUSEHOLDS:,} Princeton homes",
+     "Using the default appliances"),
 ]
 if stats is not None and timing_gain > 0:
-    cards.append((round(grid_gap / timing_gain), "~", "x", "Grid choice vs timing in NJ",
-                  f"California: {grid_gap:.0f} g/kWh lower; best PJM hour: {timing_gain:.0f}"))
+    cards.append((round(grid_gap / timing_gain), "~", "x", "Where beats when in NJ",
+                  f"Grid: {grid_gap:.0f} g/kWh cleaner. Timing: {timing_gain:.0f}."))
 components.html(stat_strip(cards), height=130)
 
 with st.container(key="panel_why"):
     st.markdown(
-        "**Why it matters.** PJM, the largest US grid, serves about 65 million people; in 2025-2026 its "
-        "power was mostly gas, nuclear, and coal, averaging about 356 gCO2/kWh. Knowing the cleanest "
-        f"hours a day ahead lets flexible loads avoid the dirtiest ones. Sources: {link('PJM')}, "
+        "**Why it matters.** PJM is the largest US grid. Its power is mostly gas, nuclear, and coal, "
+        "about 356 gCO2 per kWh on average. Knowing tomorrow's cleanest hours lets you run appliances "
+        f"when the grid is cleanest. Sources: {link('PJM')}, "
         f"{link('EIA Form 930')}, {link('IPCC AR5 Annex III', 'IPCC AR5')}.")
 
 with st.container(key="panel_tabs"):
@@ -449,18 +447,14 @@ loading.empty()
 with tab_tomorrow:
     if live_ok:
         through = (live_info["latest_data_utc"] + pd.Timedelta(hours=1)).tz_convert(TZ)
-        st.success(f"Live EIA data through {through:%b %d, %I %p} ET. "
-                   f"Forecast for {live_info['date']:%A, %B %d}.")
+        st.success(f"Live data through {through:%b %d, %I %p} ET. Forecast for {live_info['date']:%A, %B %d}.")
         if live_info.get("lag_filled"):
-            st.caption("EIA has not published yesterday's full data yet, so the most recent available "
-                       "day stands in for \"same hour yesterday\".")
+            st.caption("Yesterday's data isn't out yet, so the latest full day stands in.")
         day, title = live_day, "Tomorrow's forecast, PJM"
         base_label = ("Baseline: same hour, latest day" if live_info.get("lag_filled")
                       else "Baseline: same hour yesterday")
     else:
-        st.warning("Live data is still loading or unavailable (slow EIA or weather service, or no "
-                   "EIA_API_KEY in .env). Showing the most recent test day's forecast for now; reload "
-                   "in a minute for tomorrow's.")
+        st.warning("Live data isn't available yet, so this shows a recent day. Reload in a minute.")
         day, base_label = test_day_frame(test_days[-1]).drop(columns="actual"), "Baseline: same hour yesterday"
         title = f"Forecast for {test_days[-1]:%b %d}, PJM"
     s, start_ts = cleanest(day)
@@ -470,16 +464,16 @@ with tab_tomorrow:
         avg, best = day["forecast"].mean(), window_mean(day["forecast"], s, 3)
         ai_bubble(
             "tomorrow",
-            f"Forecast intensity in that window: **{best:.0f} gCO2/kWh**, versus a {avg:.0f} gCO2/kWh "
-            f"daily average ({100 * (avg - best) / avg:.0f}% cleaner). {confidence_line(day, s)}",
+            f"About **{best:.0f} gCO2/kWh**, {100 * (avg - best) / avg:.0f}% cleaner than the day's "
+            f"average of {avg:.0f}. {confidence_line(day, s)}",
             header_html=(f'<div class="ch-answer" role="heading" aria-level="2">Cleanest time to run '
                          f'appliances: <span class="ch-time">{charts.window_label(start_ts.hour)}</span></div>'))
         echart(lambda: charts.forecast_echarts(day, start_ts, title, baseline_label=base_label),
                lambda: charts.forecast_fig(day, start_ts, title, baseline_label=base_label), charts.SRC_MODEL_MD)
 
     st.subheader("Play the day")
-    st.markdown("Watch PJM's fuel mix hour by hour: solar rises at midday and gas fills the evening "
-                "peak. Tomorrow has not happened yet, so this plays recent days with published data.")
+    st.markdown("Watch the fuel mix change hour by hour: solar rises at midday, gas fills the evening. "
+                "Shows recent days with published data.")
     try:
         g = grid()
         mix = g[g["ba"] == "PJM"].dropna(subset=["intensity"])[["ts_utc", *data.FUELS]]
@@ -500,12 +494,12 @@ with tab_tomorrow:
         one = gw[gw.index.date == pick]
         plot(charts.mix_animation_fig(one, f"PJM fuel mix, {pick:%b %d}"), key="mix_chart")
     except Exception:
-        st.warning("The fuel-mix animation is unavailable. Run `python data.py` to rebuild the data.")
+        st.warning("The fuel mix is unavailable. Run `python data.py` to rebuild the data.")
 
 # ---------------------------------------------------------------- Check the AI
 with tab_check:
-    st.markdown(f"These days ({test_days[0]:%b %d} to {test_days[-1]:%b %d, %Y}) were held out of "
-                "training, so the forecast below is a fair test against what actually happened.")
+    st.markdown(f"The AI never saw these days ({test_days[0]:%b %d} to {test_days[-1]:%b %d, %Y}) "
+                "while learning, so this is a fair test.")
     picked = st.date_input("Test day", value=test_days[-1], min_value=test_days[0],
                            max_value=test_days[-1], format="MM/DD/YYYY")
     if picked not in set(test_days):
@@ -520,19 +514,20 @@ with tab_check:
         m1, m2, m3 = st.columns(3)
         m1.metric("AI error that day", f"{err:.1f} gCO2/kWh")
         m2.metric("Baseline error", f"{base_err:.1f} gCO2/kWh",
-                  help="Mean absolute error of \"same hour yesterday\" on this day.")
+                  help="Average miss when you just copy yesterday's values.")
         if s is not None and t is not None:
             hit = "Matched" if s == t else ("Overlapped" if abs(s - t) < 3 else "Missed")
             m3.metric("Cleanest window", hit,
                       help=f"AI picked {charts.window_label(start_ts.hour)}; actual cleanest was "
                            f"{charts.window_label(true_ts.hour)}.")
         inside = ((cday["actual"] >= cday["q10"]) & (cday["actual"] <= cday["q90"])).mean()
-        verdict = (f"On {picked:%A, %B %d}, my forecast was off by **{err:.1f} gCO2/kWh** on average, "
-                   f"versus {base_err:.1f} for \"same hour yesterday\". ")
+        verdict = (f"On {picked:%A, %B %d}, I was off by **{err:.1f} gCO2/kWh** on average. "
+                   f"Copying yesterday was off by {base_err:.1f}. ")
         if s is not None and t is not None:
-            verdict += (f"I picked **{charts.window_label(start_ts.hour)}**; the actual cleanest window was "
-                        f"{charts.window_label(true_ts.hour)}, so the pick {hit.lower()} it. ")
-        verdict += f"Actual values fell inside my 80% likely range in {100 * inside:.0f}% of hours."
+            outcome = {"Matched": "a match", "Overlapped": "close", "Missed": "a miss"}[hit]
+            verdict += (f"I picked **{charts.window_label(start_ts.hour)}**; the cleanest was "
+                        f"{charts.window_label(true_ts.hour)}, so {outcome}. ")
+        verdict += f"{100 * inside:.0f}% of hours landed in my likely range."
         if s is not None:
             verdict += f" {confidence_line(cday, s)}"
         ai_bubble("check", verdict)
@@ -547,8 +542,7 @@ with tab_sched:
     label = st.selectbox("Day to schedule", [x[0] for x in sched_days])
     sday_date = dict(sched_days)[label]
     sday = live_day if sday_date is None else test_day_frame(sday_date)
-    st.markdown("Pick your appliances and edit the numbers. Each one is scheduled into its cleanest "
-                "window, chosen from the AI forecast.")
+    st.markdown("Pick appliances and edit the numbers. Each one runs in its cleanest window.")
     table = st.data_editor(DEFAULT_APPLIANCES, hide_index=True, num_rows="dynamic", width="stretch",
                            key="appliances")
     use_actual = "actual" in sday and sday["actual"].notna().all()
@@ -561,16 +555,16 @@ with tab_sched:
         try:
             kwh, hours, runs = float(r["kWh per run"]), float(r["Hours per run"]), float(r["Runs per week"])
         except (TypeError, ValueError):
-            errors.append(f"{name}: a number is blank. Fill in kWh, hours, and runs per week.")
+            errors.append(f"{name}: fill in every number.")
             continue
         if pd.isna(kwh) or pd.isna(hours) or pd.isna(runs):
-            errors.append(f"{name}: a number is blank. Fill in kWh, hours, and runs per week.")
+            errors.append(f"{name}: fill in every number.")
         elif kwh <= 0:
-            errors.append(f"{name}: kWh per run must be above 0 (got {kwh:g}).")
+            errors.append(f"{name}: kWh must be above 0 (got {kwh:g}).")
         elif not (1 <= hours <= 12) or hours != int(hours):
-            errors.append(f"{name}: hours per run must be a whole number from 1 to 12 (got {hours:g}).")
+            errors.append(f"{name}: hours must be a whole number from 1 to 12 (got {hours:g}).")
         elif runs < 0:
-            errors.append(f"{name}: runs per week cannot be negative (got {runs:g}).")
+            errors.append(f"{name}: runs per week can't be negative (got {runs:g}).")
         else:
             hours = int(hours)
             s = model.cleanest_window(sday["forecast"].to_numpy(), hours)
@@ -585,21 +579,20 @@ with tab_sched:
             })
             yearly_t += yearly_tonnes(kwh, hours, runs)
     if errors:
-        st.error("Some rows need fixing and were skipped:\n\n" + "\n".join(f"- {e}" for e in errors))
+        st.error("Fix these rows (skipped for now):\n\n" + "\n".join(f"- {e}" for e in errors))
     if rows:
         out = pd.DataFrame(rows)
         st.dataframe(out, hide_index=True, width="stretch")
         ai_bubble(
             "scheduler",
-            f"Running these in their cleanest windows saves **{out['Saved vs dirtiest (kg)'].sum():.2f} kg CO2** "
-            f"versus the dirtiest time and **{out['Saved vs typical (kg)'].sum():.2f} kg** versus a typical "
-            f"time (scored on {'actual' if use_actual else 'forecast'} intensity). If {HOUSEHOLDS:,} Princeton "
-            f"households did this, that is about **{yearly_t:,.0f} tonnes CO2 a year**.")
-        st.caption("Yearly figure: average saving versus a typical time across the 61 test days, using "
-                   "the AI's picks scored against actual intensity, times runs per week, 52 weeks, and "
-                   f"{HOUSEHOLDS:,} households. Average-intensity accounting; see How the AI works.")
+            f"This saves **{out['Saved vs dirtiest (kg)'].sum():.2f} kg CO2** compared with the dirtiest "
+            f"time, and **{out['Saved vs typical (kg)'].sum():.2f} kg** compared with a typical time. Across "
+            f"{HOUSEHOLDS:,} Princeton homes, that's about **{yearly_t:,.0f} tonnes a year**.")
+        st.caption(f"Today's numbers use {'actual' if use_actual else 'forecast'} values. The yearly figure "
+                   f"uses the average saving over 61 test days, times runs per week, 52 weeks, and "
+                   f"{HOUSEHOLDS:,} homes.")
     elif not errors:
-        st.info("Tick Include on at least one appliance to see a schedule.")
+        st.info("Tick Include on an appliance to see its schedule.")
 
 # ---------------------------------------------------------------- Where vs when
 with tab_where:
@@ -609,20 +602,17 @@ with tab_where:
         echart(lambda: charts.spread_echarts(stats), lambda: charts.spread_fig(stats), charts.SRC_EIA_MD)
         ai_bubble(
             "where",
-            f"In PJM, picking the cleanest hour saves about **{timing_gain:.0f} gCO2/kWh**. Switching to "
-            f"California's grid would save about **{grid_gap:.0f}**. For New Jersey, a cleaner grid matters "
-            "more than better timing.")
+            f"Picking the cleanest hour in PJM saves about **{timing_gain:.0f} gCO2/kWh**. Being on "
+            f"California's grid would save about **{grid_gap:.0f}**. In New Jersey, a cleaner grid matters "
+            "more than timing.")
 
 # ---------------------------------------------------------------- How the AI works
 with tab_how:
     ai_bubble(
         "how",
-        "Each night the model predicts all 24 hours of the next day. It is a gradient-boosted tree "
-        "ensemble (scikit-learn HistGradientBoostingRegressor) that learned from about 19 months of "
-        "PJM data how the fuel mix responds to the time of day, sunlight, wind, temperature, and "
-        "expected demand. It was tested on the last two months, which it never saw during training, "
-        "and compared against a plain linear regression and two simple rules a person could use "
-        "without any AI.")
+        "Each night I predict every hour of the next day. I learned from 19 months of PJM data how "
+        "sunlight, wind, temperature, demand, and time of day change the grid's mix. I was tested on two "
+        "months I never saw, against a simpler model and two rules of thumb.")
     mrows = [{"Method": name, "Mean abs. error (gCO2/kWh)": round(m["mae_g_per_kwh"], 1),
               "Exact window hit": f"{100 * m['hit_rate_exact']:.0f}%",
               "Window overlap": f"{100 * m['hit_rate_overlap']:.0f}%",
@@ -630,38 +620,32 @@ with tab_how:
              for name, m in metrics["models"].items()]
     st.dataframe(pd.DataFrame(mrows), hide_index=True, width="stretch")
     st.markdown(
-        f"Test period {metrics['test_start']} to {metrics['test_end']} ({metrics['test_hours']:,} hours). "
-        f"The model's error is **{metrics['improvement_vs_yesterday_pct']:.0f}% lower** than "
-        f"\"same hour yesterday\" and **{metrics['improvement_vs_hour_avg_pct']:.0f}% lower** than the "
-        "hour-of-day average. Picking the single cleanest window is harder: the model hits it exactly "
-        "more often than either rule, but the overlap rate and the extra intensity paid are close to "
-        "the simple rules, because PJM's hourly swing within a day is small. Gradient boosting beats "
-        "linear regression because it captures non-linear effects (for example, sunlight only matters "
-        "in daytime, and demand matters more in the evening); a straight-line model can only add effects "
-        f"up, which shows most when picking the cleanest window "
-        f"({100 * metrics['models']['Linear regression']['hit_rate_exact']:.0f}% exact hits vs "
-        f"{100 * metrics['models']['AI model (gradient boosting)']['hit_rate_exact']:.0f}%).")
+        f"Tested {pd.Timestamp(metrics['test_start']):%b %d} to {pd.Timestamp(metrics['test_end']):%b %d}. "
+        f"The AI's error is "
+        f"**{metrics['improvement_vs_yesterday_pct']:.0f}% lower** than copying yesterday and "
+        f"**{metrics['improvement_vs_hour_avg_pct']:.0f}% lower** than the hour-of-day average. Picking the "
+        "exact cleanest window is harder, because PJM's hours are often close. The model (gradient "
+        "boosting) beats linear regression because it handles effects that depend on the hour, like "
+        f"sunlight only mattering in daytime "
+        f"({100 * metrics['models']['AI model (gradient boosting)']['hit_rate_exact']:.0f}% vs "
+        f"{100 * metrics['models']['Linear regression']['hit_rate_exact']:.0f}% exact window hits).")
+    cov = metrics["band_coverage_pct"]
     st.markdown(
-        f"**Uncertainty.** Two more boosted models predict the 10th and 90th percentile of each hour, "
-        f"giving an \"80% likely range\". On their own they were overconfident: only "
-        f"{metrics['band_raw_coverage_pct']:.0f}% of test hours fell inside. After calibrating on the last "
-        f"30 training days (conformal widening by {metrics['band_pad_g_per_kwh']:.1f} gCO2/kWh), "
-        f"**{metrics['band_coverage_pct']:.0f}%** of test hours fall inside the range, "
-        + ("close to the 80% target." if abs(metrics["band_coverage_pct"] - 80) <= 3 else
-           "under the 80% target, so treat the range as somewhat optimistic."
-           if metrics["band_coverage_pct"] < 80 else "above the 80% target, so the range is cautious."))
+        f"**Uncertainty.** The shaded band is an \"80% likely range\". At first it caught only "
+        f"{metrics['band_raw_coverage_pct']:.0f}% of test hours, so it was widened by "
+        f"{metrics['band_pad_g_per_kwh']:.1f} gCO2/kWh using earlier data. Now it catches **{cov:.0f}%**, "
+        + ("close to 80%." if abs(cov - 80) <= 3 else
+           "a bit under 80%, so it's slightly optimistic." if cov < 80 else "above 80%, so it's cautious."))
     echart(lambda: charts.importance_echarts(importance), lambda: charts.importance_fig(importance),
            charts.SRC_MODEL_MD)
     st.markdown("**Limitations**")
     st.markdown(
-        "- Production-based, not consumption-based: imports from neighboring grids are not counted.\n"
-        "- Average, not marginal, intensity: the plant that actually responds to your extra load "
-        "(usually gas) can be dirtier than the average.\n"
-        "- Backtests use actual weather as a stand-in for weather forecasts, so they are somewhat "
-        "optimistic.\n"
-        "- Live mode uses EIA data that lags about a day, so tomorrow's forecast is less certain than "
-        "the backtest.\n"
-        "- Emission factors are IPCC lifecycle medians; \"other\" and unknown fuels are assumed gas-like.")
+        "- Counts only power made in PJM; imports from other grids are left out.\n"
+        "- Uses the grid's average mix. The plant that actually covers extra demand (usually gas) can "
+        "be dirtier.\n"
+        "- Tests used real weather instead of forecasts, which flatters the AI a little.\n"
+        "- Live data lags about a day, so tomorrow's forecast is less certain.\n"
+        "- Emission factors are IPCC lifecycle medians; \"other\" fuels are treated like gas.")
 
 # ---------------------------------------------------------------- footer
 with st.container(key="panel_footer"):
@@ -675,11 +659,11 @@ with st.container(key="panel_footer"):
         "© 2026 CleanHour, hackPHS")
     with st.expander("About & privacy"):
         st.markdown(
-            "- CleanHour asks for no personal data and has no accounts, tracking, or advertising cookies. "
-            "Streamlit's usage statistics are turned off; Streamlit may set one technical security cookie.\n"
-            "- Scheduler inputs exist only in your current session and are discarded when you close the tab.\n"
-            "- Forecasts are estimates from a statistical model and should not be taken as advice.\n"
-            "- Fonts load from Google Fonts, which sees your IP address like any web request.\n"
+            "- No accounts, no personal data, no tracking or ad cookies. Streamlit may set one "
+            "security cookie, and its usage stats are off.\n"
+            "- Scheduler inputs last only for your session and are gone when you close the tab.\n"
+            "- Forecasts are estimates. Use them as a guide.\n"
+            "- Fonts come from Google Fonts, which sees your IP address like any website.\n"
             f"- Sources and licenses: {link('EIA Form 930')} (U.S. government, public domain); "
             f"{link('Open-Meteo')} (CC BY 4.0); {link('ERA5')} (Copernicus license); "
             f"{link('IPCC AR5 Annex III', 'IPCC AR5')} emission factors; background photo under the "

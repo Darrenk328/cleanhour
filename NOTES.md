@@ -159,3 +159,6 @@
   https://unsplash.com/photos/white-clouds-and-blue-sky-during-daytime-ua2IF9HNaXs), 158 KB.
   Lighter veil rgba(14,30,42,0.22) so the sky reads as a normal daytime sky; cream text on
   the stat strip keeps its shadow.
+- Copy pass (on request): shortened and simplified all app text (stat strip, Why it matters,
+  status messages, AI bubbles, Check the AI, Scheduler, How the AI works, limitations, About
+  & privacy). Same facts and numbers; charts, chart titles, and logic unchanged.
