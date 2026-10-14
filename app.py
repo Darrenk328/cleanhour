@@ -15,6 +15,13 @@ import charts
 import data
 import model
 
+try:
+    from dotenv import load_dotenv
+    # The project's .env wins over any EIA_API_KEY already in the shell environment.
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+except ImportError:
+    pass
+
 ROOT = Path(__file__).resolve().parent
 TZ = "America/New_York"
 HOUSEHOLDS = 10_000

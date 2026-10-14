@@ -162,3 +162,7 @@
 - Copy pass (on request): shortened and simplified all app text (stat strip, Why it matters,
   status messages, AI bubbles, Check the AI, Scheduler, How the AI works, limitations, About
   & privacy). Same facts and numbers; charts, chart titles, and logic unchanged.
+- Fix: live mode silently fell back when launched from a shell whose ~/.zshrc exports a
+  different EIA_API_KEY; python-dotenv does not override existing variables, so the app used
+  the shell's key and EIA rejected it. app.py now loads the project .env with override=True
+  at startup, so the project key always wins.
